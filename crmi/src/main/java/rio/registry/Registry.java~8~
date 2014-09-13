@@ -1,0 +1,84 @@
+package rio.registry;
+
+import run.stub_skeleton.*;
+import run.reference.*;
+import run.transport.*;
+
+import clio.ClusterClassLoader;
+
+/**
+ * Interroga il repository remoto
+ * Il Registry fornisce servizi ad alto livello.
+ */
+
+public class Registry
+{
+  /**
+   * Registra il servizio nel registry remoto sul nodo "host".
+   * Associa l'istanza dell'oggetto che implementa l'interfaccia  Services al service name, il nome dei metodi lo ricava per introspezione
+   * 1. Crea il RegistryServicesReference con
+   *    - il services_name fornito,
+   *    - nomi dei metodi
+   *    - firma dei metodi (ricavati per introspezione su Services),
+   *    - nome della classe che implementa i servizi,
+   *    - ed indirizzo locale ricavato dal **transport** che collega alla stessa rete che collega l'host remote,
+   * 2. Crea le classi stub/skeleton tramite SSGenerator
+   * 3. Istanzia uno Skeleton, lo skeleton memorizza un riferimento al servizio.
+   *    Questo e' il parametro services.
+   * 4. Crea il LocalServicesReference con
+   *    - il services_name
+   *    - il nome e la firma dei metodi ricavati dal punto 1
+   *    - il riferimento allo skeleton.
+   * 5. Memorizza nel Registry locale l'associazione:
+   *    service_names -> LocalServiceReference
+   * 6. Se "host" e' remoto, invia RegistryServicesReference al Registry remoto,
+   *    in modo da essere rintracciato.
+   *
+   */
+  public static void register( NetAddress registry_address, String services_name, Services services ) throws RegistryException, TransportException
+  {
+    // parte remota
+    NetAddress localhost = TransportTable.routeToHost( registry_address );
+    RegistryServicesReference registry_ref = new RegistryServicesReference( localhost, services_name, services );
+    Out.register( registry_address, registry_ref );
+
+    // parte locale
+    Skeleton skeleton = Local.newSkeleton( registry_ref, services ); // lo skeleton contiene il riferimento all'istanza del servizio locale.
+    LocalServicesReference local_ref = registry_ref.toLocalServicesReference();
+    local_ref.setSkeleton( skeleton );
+    Local.register( local_ref );
+  }
+
+  /**
+   * Versione debug, host=localhost
+   */
+  public static void register( String services_name, Services services )
+  {
+    // parte globale
+    NetAddress localhost = TransportTable.routeToHost( registry_address );
+    RegistryServicesReference registry_ref = new RegistryServicesReference( localhost, services_name, services );
+    Global.register( registry_ref );
+
+    // parte locale
+    Skeleton skeleton = Local.newSkeleton( registry_ref, services );
+    LocalServicesReference local_ref = registry_ref.toLocalServicesReference();
+    local_ref.setSkeleton( skeleton );
+    Local.register( local_ref );
+  }
+
+  /**
+   * Restituisce lo stub che implementa l'interfaccia di servizi
+   * 1. Contatta il registry remoto sul nodo "host" passandogli il services_name
+   * 2. Il repository Remoto contiene l'associazione da services_name --> RemoteServiceReference
+   * 3. Restituisce il RegistryServicesReference, che contiene il nome della classe che implementa Services
+   * 4. Tramite CLIO carica lo Stub, inizializza lo stub con il riferimento remoto RegistryServicesReference
+   * 5. Istanzia uno stub
+   * 6. Restituisce lo stub
+   */
+  public static Services lookup( NetAddress registry_address, String services_name ) throws UnknownServiceException
+  {
+    RegistryServicesReference registry_ref = Out.lookup( registry_address, services_name );
+    Stub services_stub = Local.newStub( registry_ref ); // lo stub contiene il riferimento remoto: RemoteServicesRef
+  }
+
+}

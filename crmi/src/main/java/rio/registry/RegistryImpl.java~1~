@@ -1,0 +1,48 @@
+package rio.registry;
+
+/**
+ * Contiene l'associazione servizi, tratta DataStructures a piu' basso livello
+ */
+
+public class RegistryImpl
+{
+
+  public RegistryImpl()
+  {
+  }
+
+  protected NetAddress lookupLocalHost( NetAddress registry_services )
+  {
+  }
+
+  /**
+   * Per i servizi remoti Registra i RemoteServicesReference
+   */
+  public static void register( NetAddress _registry_address, RegistryServicesReference _rsr )
+  {
+    RegistryOut.register( _registry_address, _rsr );
+  }
+
+  /**
+   * ****** Per i servizi remoti restituisce la RemoteServicesReference associato al service_name
+   */
+  public static RemoteServicesReference lookup( NetAddress _registry_address, String services_name )
+  {
+    return RegistryOut.lookup( _registry_address, services_name );
+  }
+
+  /**
+   * Interrograzioni su servizi locali, Associa RSF a LSF
+   */
+  static void register( String services_name, LocalServicesReference lsr  )
+  {
+  }
+
+  /**
+   * Interrogazioni su servizi locali, restituisce LSF dato RSF interrogato dal Dispatcher
+   */
+  static LocalServicesReference lookup( String services_name )
+  {
+  }
+
+}

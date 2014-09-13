@@ -1,0 +1,129 @@
+package rio.registry;
+
+import run.reference.*;
+import run.stub_skeleton.*;
+import run.Services;
+
+/**
+ * Invia le richieste a remoto
+ * Riceve le richieste da remoto ed interroga il RegistryImpl
+ *
+ *
+ *  Service          Global
+ *
+ *    /\         /\             \/
+ *     |         |              |
+ *   Stub       In              Out
+ *      \      /                |
+ *       Local                  |
+ *         |                    |
+ *      Dispatcher              |
+ *                              |
+ *                          SessionTable
+ *
+ */
+
+class Out extends Stub implements Services
+{
+  /**
+   * 1. contatta l'host mandandogli RegistrySR
+   * 2. Riceve OK
+   */
+  static void register( NetAddress remote_registry_address, RegistryServicesReference service_ref ) throws RemoteException
+  {
+    RegistryServicesReference remote_registry_reference = new RegistryServicesReference( remote_registry_address, "Registry", Global.services );
+    // Lo stub individua sempre tutti i servizi
+    Out remote_Registry = new Out( remote_registry_reference );
+
+    remote_Registry.register( service_ref );
+  }
+
+  /**
+   * 1. Contatta "host" chiedendogli RegistrySR
+   */
+  static RegistryServiceReference lookup( NetAddress remote_registry_address, String services_name ) throws RemoteException
+  {
+    RegistryServicesReference remote_registry_reference = new RegistryServicesReference( remote_registry_address, "Registry", Global.services );
+    Out remote_Registry = new Out( remote_registry_reference );
+
+    return remote_Registry.lookup( services_name );
+  }
+
+  public Out( RegistryServiceReference registry_ref ) // reference al registry remoto
+  {
+    super( registry_ref );
+  }
+
+  /**
+   * Richiesta del servizio remoto: register
+   */
+  void register( RegistryServicesReference registry_ref ) throws RemoteException
+  {
+    int register_framesize = registry_ref.sizeOf();
+
+    RemoteServiceReference remote_service_reference = registry_service_reference.toRemoteServiceReference( "register",  "(Lrun/reference/RegistryServicesReference;)V" );
+
+    Container container = new Container( register_framesize );
+
+    // true indica che serializzeremo anche oggetti quindi creare la reference_table
+    Container.ContainerOutputStream cos = container.getContainerOutputStream( true );
+
+    cos.writeObject( registry_ref );
+
+    Callgram callgram = new Callgram( Callgram.CALL, 0, remote_services_reference, null, container );
+
+    Callgram rcv_callgram = Manager.execRemoteCall( callgram );
+
+    Container res = rcv_callgram.getContainer();
+
+    return;
+  }
+
+  /**
+   * 1. Contatta "host" chiedendogli RegistrySR
+   */
+  RegistryServiceReference lookup( NetAddress registry_address, String services_name ) throws RegistryException
+  {
+    int lookup_framesize = SizeOf.stringUTF32( services_name );
+
+    RemoteServiceReference remote_services_reference = registry_service_reference.toRemoteServiceReference( "lookup", "(Ljava/lang/String;)Lrun/reference/RegistryServicesReference;" );
+
+    Container container = new Container( lookup_framesize );
+
+    // true indica che serializzeremo anche oggetti quindi creare la reference_table
+    Container.ContainerOutputStream cos = container.getContainerOutputStream( true );
+
+    cos.writeString( services_name );
+
+    Callgram callgram = new Callgram( Callgram.CALL, 0, remote_services_reference, null, container );
+
+    Callgram rcv_callgram = Manager.execRemoteCall( callgram );
+
+    Container res = rcv_callgram.getContainer();
+    int register_framesize = registry_ref.sizeOf();
+
+    Container container = new Container( register_framesize );
+
+    // true indica che serializzeremo anche oggetti quindi creare la reference_table
+    Container.ContainerOutputStream cos = container.getContainerOutputStream( true );
+
+    cos.writeObject( registry_ref );
+
+    Callgram callgram = new Callgram( Callgram.CALL, remote_services_reference, null, container );
+
+    Callgram rcv_callgram = Manager.execCall( callgram );
+
+    Container res = rcv_callgram.getContainer();
+
+    // argomento true: il risultato e' un oggetto
+    Container.ContainerInputStream cis = res.getContainerInputStream( true );
+
+    RegistryServiceReference registry_ref = cis.readObject( RegistryServiceReference.class );
+
+    return registry_ref;
+  }
+
+
+}
+
+

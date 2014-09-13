@@ -1,0 +1,319 @@
+package clio;
+
+/**
+ * Title:        Clio
+ * Description:  Clio e' un class loader che aggiunger i metodi read/write ad una classe serializable, externalizable.
+ * Effettua una reflection statica.
+ * Copyright:    Copyright (c) 2001
+ * Company:      Unisa
+ * @author Roberto Capuano
+ * @version 1.0
+ */
+
+import com.borland.primetime.util.Debug;
+
+import de.fub.bytecode.*;
+import de.fub.bytecode.classfile.*;
+import de.fub.bytecode.generic.*;
+
+//import sun.tools.java.Type;
+
+
+public class RWGenerator {
+
+  protected String class_name;
+
+  private JavaClass cl;
+
+  public RWGenerator( String ini_class_name ) throws ClassNotFoundException
+  {
+    class_name = ini_class_name;
+
+    cl = Repository.lookupClass(class_name);
+    if (cl==null)
+      throw new ClassNotFoundException( class_name + " not found." );
+  }
+
+  public void generate()
+  {
+    ClassGen cg;
+    ConstantPoolGen cpg;
+    InstructionFactory factory;
+    boolean is_externalizable = false;
+
+    cg = new ClassGen( cl );
+    cpg = cg.getConstantPool();
+    factory = new InstructionFactory( cg );
+
+
+    String[] inl = cg.getInterfaceNames();
+
+    for ( int i=0; i<inl.length; ++i )
+      if (inl[i].equals("java.io.Externalizable") )
+	is_externalizable = true;
+
+    if ( !is_externalizable )
+    {
+//      sun.tools.java.Type object_input_type = sun.tools.java.Type.tClass( sun.tools.java.Identifier.lookup( "java.io.ObjectInput" ) );
+//     String read_signature = sun.tools.java.Type.tMethod( sun.tools.java.Type.tVoid, new sun.tools.java.Type[] { object_input_type  } ).toString();
+//	String write_signature = Utility.methodTypeToSignature()
+//      sun.tools.java.Type object_output_type = sun.tools.java.Type.tClass( sun.tools.java.Identifier.lookup( "java.io.ObjectOutput" ) );
+//      String write_signature = sun.tools.java.Type.tMethod( sun.tools.java.Type.tVoid, new sun.tools.java.Type[] { object_output_type  } ).toString();
+
+      String externalizable_signature = Utility.methodTypeToSignature("void", new String[] { "java.io.ObjectInput" } );
+
+
+
+      if ( cg.containsMethod( "readExternal", externalizable_signature  ) == null )
+	generateRead( cg, cpg, factory  );
+
+      if ( cg.containsMethod( "writeExternal", externalizable_signature ) == null )
+	generateWrite( cg, cpg, factory );
+
+      cg.addInterface("java.io.Externalizable");
+
+
+/**
+ * @todo  classe modificata dove memorizzarla?
+ */
+      try
+      {
+	cg.getJavaClass().dump( "repository"+System.getProperty("file.separator") + cl.getClassName() + ".class" );
+      }
+      catch(java.io.IOException e) { System.err.println(e); }
+
+    }
+
+  }
+
+
+  void generateRead( ClassGen cg, ConstantPoolGen cpg, InstructionFactory factory )
+  {
+    MethodGen mg_read;
+    InstructionList il_read;
+
+    il_read = new InstructionList();
+
+    InvokeInstruction invoke_op;
+    PUTFIELD put_field_op;
+    GETFIELD get_field_op;
+    ReturnInstruction return_op;
+
+    Field[] f = cg.getFields();
+
+    for ( int i=0; i<f.length; ++i )
+    {
+      if ( f[i].isTransient() )
+	continue;
+
+      // dati del campo da serializzare
+      String field_signature = f[i].getSignature();
+      Type field_type = Type.getType( field_signature );
+      String field_name = f[i].getName();
+
+      // metodo di input e tipo di ritorno
+      String input_method;
+      Type input_type;
+
+
+      if ( field_type instanceof BasicType )
+      {
+	String field_typename = field_type.toString();
+	field_typename = field_typename.charAt(1)+field_typename.substring(2, field_typename.length());
+
+	input_method = "read"+field_typename;
+	input_type = field_type;
+
+	 // load del reference this per la successiva operazione: putfield
+	il_read.append( factory.createLoad( Type.OBJECT, 0 ) );
+
+	 // carica il primo argomento nello stack: in
+	il_read.append( factory.createLoad( Type.OBJECT, 1 ) );
+
+/**
+ * Stato dello stack
+ *          this,  in                                                             TOP dello stack
+ * 1)              readXXX                                                        consuma il reference in e produce un dato
+ *          this, dato di tipo XXX
+ * 2)              put_field                                                      consuma this, dato
+ *
+ *
+ */
+	invoke_op = factory.createInvoke( "java.io.ObjectInput", input_method, input_type, Type.NO_ARGS, Constants.INVOKEINTERFACE );
+	il_read.append( invoke_op );
+
+	put_field_op = factory.createPutField( cl.getClassName(), field_name, input_type );
+	il_read.append( put_field_op );
+      }
+      else
+      if (field_type instanceof ArrayType )
+      {
+
+	// ???????????????????
+      }
+
+      if (field_type instanceof ObjectType  )
+      {
+	input_method = "readExternal";
+	input_type = field_type;
+
+	 // load del reference this per la successiva operazione: putfield
+
+/**
+ * 1) carica il this sullo stack
+ * Stack: this,
+ */
+	il_read.append( factory.createLoad( Type.OBJECT, 0 ) );
+
+/**
+ * 2) new field_type
+ * Stack: this, ref
+ *              reference al nuovo oggetto
+ *
+ */
+
+	il_read.append( factory.createNew( (ObjectType) field_type ) );
+/**
+ * 3) dup del reference
+ * Stack: this, ref, ref
+ */
+
+	il_read.append( factory.createDup( 1 ) ); // duplica il reference dell'oggetto per la putfield
+
+/**
+ * 4) costruttore consuma solo il reference
+ * Stack: this, ref
+ */
+	il_read.append( factory.createInvoke( field_type.toString(), "<init>", Type.VOID, Type.NO_ARGS, Constants.INVOKESPECIAL ) );
+
+/**
+ * 5) putfield nella nostra istanza di classe
+ * Stack:
+ */
+	put_field_op = factory.createPutField( field_type.toString(), field_name, field_type );
+	il_read.append( put_field_op );
+
+/**
+ * 6) // load del reference this per la successiva operazione: putfield
+ * Stack: this
+ */
+
+	il_read.append( factory.createLoad( Type.OBJECT, 0 ) );
+
+/**
+ * 7) Carica il reference appena inizializzato sullo stack
+ * Stack:
+ */
+	get_field_op = factory.createGetField( field_type.toString(), field_name, field_type );
+	il_read.append( get_field_op );
+
+/**
+ * 8) carica il primo argomento nello stack: ref
+ * Stack: ref
+ */
+
+/**
+ * 9) Passa l'argomento della readExternal come primo argomento della ref.readExternal
+ * Stack: ref, in
+ */
+	il_read.append( factory.createLoad( Type.OBJECT, 1 ) );
+
+/**
+ * 10) Esegue: ref.readExternal(in);
+ * Stack:
+ */
+	invoke_op = factory.createInvoke( "java.io.ObjectInput", input_method, input_type, Type.NO_ARGS, Constants.INVOKEINTERFACE );
+	il_read.append( invoke_op );
+      }
+      else
+      {
+	 // ERRORE
+	System.out.println( "Tipo campo: " + f[i] + "non riconosciuto" );
+	System.exit( -1 );
+      }
+
+
+
+
+    } // end for
+
+
+
+  // Osservazione: I
+
+    return_op = factory.createReturn( Type.VOID );
+    il_read.append( return_op );
+
+
+//    invoke = factory.createInvoke( "foreign.Base", "<init>", Type.OBJECT, Type.NO_ARGS, Constants.INVOKESPECIAL );
+
+    mg_read = new MethodGen( Constants.ACC_PUBLIC, Type.VOID, new Type[] { new ObjectType( "java.io.ObjectInput") }, new String[] { "in" }, "readExternal",  cl.getClassName(), il_read, cpg );
+//    mg_read.get
+    mg_read.addException("java.io.IOException");
+    mg_read.addException("java.lang.ClassNotFoundException");
+//    il_read.append( new LocalVariableGen(
+
+    //    int index = cpg.lookupString("in");
+
+
+
+
+    mg_read.setMaxStack();
+    mg_read.setMaxLocals();
+
+    cg.addMethod( mg_read.getMethod() );
+
+    il_read.dispose();
+
+  }
+
+
+  void generateWrite( ClassGen cg, ConstantPoolGen cpg, InstructionFactory factory )
+  {
+/*    MethodGen mg_write;
+    InstructionList il_write;
+
+    il_write = new InstructionList();
+
+    InvokeInstruction invoke_op;
+    PUTFIELD put_field_op;
+    GETFIELD get_field_op;
+    ReturnInstruction return_op;
+
+  // Osservazione: I
+    il_read.append( factory.createLoad( Type.OBJECT, 0 ) ); // load del reference this per la successiva operazione: putfield
+
+    il_read.append( factory.createLoad( Type.OBJECT, 1 ) ); // carica il primo argomento nello stack: in
+    invoke_op = factory.createInvoke( "java.io.ObjectInput", "readInt", Type.INT, Type.NO_ARGS, Constants.INVOKEINTERFACE );
+    il_read.append( invoke_op );
+
+    put_field_op = factory.createPutField( cl.getClassName(), "a", Type.INT );
+    il_read.append( put_field_op );
+
+    return_op = factory.createReturn( Type.VOID );
+    il_read.append( return_op );
+
+
+//    invoke = factory.createInvoke( "foreign.Base", "<init>", Type.OBJECT, Type.NO_ARGS, Constants.INVOKESPECIAL );
+
+    mg_read = new MethodGen( Constants.ACC_PUBLIC, Type.VOID, new Type[] { new ObjectType( "java.io.ObjectInput") }, new String[] { "in" }, "readExternal",  cl.getClassName(), il_read, cpg );
+//    mg_read.get
+    mg_read.addException("java.io.IOException");
+    mg_read.addException("java.lang.ClassNotFoundException");
+//    il_read.append( new LocalVariableGen(
+
+    //    int index = cpg.lookupString("in");
+
+
+
+
+    mg_read.setMaxStack();
+    mg_read.setMaxLocals();
+
+    cg.addMethod( mg_read.getMethod() );
+
+    il_read.dispose();
+*/
+  }
+
+}

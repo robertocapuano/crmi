@@ -1,0 +1,512 @@
+package clio;
+
+import java.util.Vector;
+
+import de.fub.bytecode.*;
+import de.fub.bytecode.classfile.*;
+import de.fub.bytecode.generic.*;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import run.stub_skeleton.*;
+
+import run.serialization.SizeOf;
+
+/**
+ * Genera le classi Stub/Skeleton per il servizio
+ * La Major/Minor version della classe generata e' uguale a quella della classe del servizio
+ */
+
+final class StubGenerator extends Generator
+{
+    
+         private final Logger log = LogManager.getLogger(this.getClass() );
+ 
+  private final static Type[] init_arg_type = new Type[] { TypeRepository.RegistryServicesReference_type };
+
+  static JavaClass generateStubClass( JavaClass service_jcl )
+  {
+    String superclass_name = "run.stub_skeleton.Stub";
+    String service_name = service_jcl.getClassName();
+    String class_name = service_name + Stub.CLASSNAME_SUFFIX;
+    String file_name = class_name.substring( class_name.lastIndexOf(".")+1 );
+
+    Vector interface_to_implement = new Vector();
+    Vector interfacename_to_implement = new Vector();
+
+    String[] interfaces_name = service_jcl.getInterfaceNames();
+
+    Debug.println("StubGenerator(): " + class_name );
+
+    for ( int i=0; i<interfaces_name.length; ++i )
+    {
+      JavaClass interface_implemented = Repository.lookupClass( interfaces_name[i] );
+
+      if ( interface_implemented.instanceOf(TypeRepository.Services_jclass) )
+      {
+	interface_to_implement.add( interface_implemented );
+	interfacename_to_implement.add( interfaces_name[i] );
+      }
+    }
+
+    ClassGen cg = new ClassGen( class_name, superclass_name, class_name+".class", Constants.ACC_PUBLIC | Constants.ACC_SUPER, (String[]) interfacename_to_implement.toArray(new String[0]) );
+    ConstantPoolGen cpg = cg.getConstantPool();
+    InstructionFactory factory = new InstructionFactory(cg);
+//    MethodGen mg_invoke = new MethodGen( Constants.ACC_PUBLIC, class_name, cpg );
+
+    addInit( cg, cpg, factory );
+
+    for ( int i=0; i<interface_to_implement.size(); ++i )
+    {
+      JavaClass interface_implemented = (JavaClass) interface_to_implement.get(i);
+      Method[] service_method = interface_implemented.getMethods();
+      for ( int j=0; j<service_method.length; ++j )
+        addServiceStub( cg, cpg, factory, service_method[j] );
+    }
+
+    return cg.getJavaClass();
+  }
+
+  /**
+   * Aggiunge il constructor.
+   * <code>
+   * public init(RegistryServicesReference rsr )
+   * {
+   *  super( rsr );
+   * }
+   * </code>
+   */
+
+  private static void addInit( ClassGen cg, ConstantPoolGen cpg, InstructionFactory factory )
+  {
+    final String class_name = cg.getClassName();
+    final String superclass_name = cg.getSuperclassName();
+    final InstructionList il_init = new InstructionList( );
+
+    il_init.append( factory.createLoad( Type.OBJECT, 0 ) );
+    il_init.append( factory.createLoad( Type.OBJECT, 1 ) );
+
+    il_init.append( factory.createInvoke( superclass_name, "<init>", Type.VOID, init_arg_type, Constants.INVOKESPECIAL ) );
+    il_init.append( factory.createReturn( Type.VOID ) );
+
+    final MethodGen mg_init = new MethodGen( Constants.ACC_PUBLIC, Type.VOID, init_arg_type, new String[] { "rsr" }, "<init>", class_name, il_init, cpg );
+
+    // finalizing
+    mg_init.setMaxStack();
+    mg_init.setMaxLocals();
+    cg.addMethod( mg_init.getMethod() );
+
+    // garbage-collection
+    il_init.dispose();
+  }
+
+  /**
+   * Aggiunge l'invocazione remota.
+   */
+  private static void addServiceStub( ClassGen cg, ConstantPoolGen cpg, InstructionFactory factory, Method service_method )
+  {
+    InstructionHandle[] ihandle = new InstructionHandle[16];
+
+    final String service_name = service_method.getName();
+    final String service_signature = service_method.getSignature();
+    final Type[] varg_type = Type.getArgumentTypes( service_signature );
+    final int[] varg_index = new int[varg_type.length];
+
+    final MethodGen mg_invoke = new MethodGen( service_method, cg.getClassName(), cpg );
+    final InstructionList il_invoke = new InstructionList( );
+
+    Debug.println( "addServiceStub(): " + service_name );
+    // inizio degli slot delle variabili locali: dopo gli argomenti della chiamata
+    int start_slot = 1;
+    for ( int i=0; i< varg_type.length; ++i )
+    {
+      varg_index[i] = start_slot;
+      start_slot += varg_type[i].getSize();
+    }
+
+    if (mg_invoke.getMaxLocals()<start_slot)
+      mg_invoke.setMaxLocals( start_slot );
+
+    // variabile: framesize
+    final String framesize_name = service_name + "_framesize";
+    int framesize_index = addLocalVariable( factory, mg_invoke, il_invoke, framesize_name, Type.INT );
+
+    // variabile: container
+    int container_index = addLocalVariable( factory, mg_invoke, il_invoke, "container", TypeRepository.Container_type );
+
+    // variabile: cos
+    int cos_index = addLocalVariable( factory, mg_invoke, il_invoke, "cos", TypeRepository.cos_type );
+
+    // variabile: cis
+    int cis_index = addLocalVariable( factory, mg_invoke, il_invoke, "cis", TypeRepository.cis_type );
+
+    // variabile: rsr (RemoteServiceReference remote_services_reference)
+    int rsr_index = addLocalVariable(factory, mg_invoke, il_invoke, "rsr", TypeRepository.RemoteServiceReference_type );
+
+    // variabile: rcv (Callgram)
+    int rcv_index = addLocalVariable(factory, mg_invoke, il_invoke, "rcv", TypeRepository.Callgram_type );
+
+    // variabile: callgram (Callgram)
+    int callgram_index = addLocalVariable(factory, mg_invoke, il_invoke, "callgram", TypeRepository.Callgram_type );
+
+    // variabile: res (Container)
+    int res_index = addLocalVariable(factory, mg_invoke, il_invoke, "res", TypeRepository.Container_type );
+
+    // variabile: return
+    Type return_type = Type.getReturnType(service_signature);
+    int return_index = addLocalVariable(factory, mg_invoke, il_invoke, "return_res", return_type );
+
+    Instruction store_op;
+    IADD iadd_op = new IADD();
+
+    int sizeof_primitives = 0;
+    int even = 0;
+
+    // SizeOf.sizeOf( ... )
+
+    for ( int i=0; i<varg_type.length; ++i )
+    {
+      String sizeof_method;
+      Type sizeof_type;
+
+      if ( varg_type[i] instanceof BasicType )
+      {
+	sizeof_primitives += SizeOf.primitive( varg_type[i].getSignature().charAt(0) ); // I
+      }
+      else
+      {
+	// index parte da uno, zero e' riservato per this
+	LocalVariableInstruction load_op = factory.createLoad( varg_type[i], varg_index[i] );
+	il_invoke.append( load_op );
+
+	if (varg_type[i] instanceof ArrayType )
+	{
+	  sizeof_method = "array";
+	  sizeof_type = Type.OBJECT;
+
+	}
+	else
+	if (varg_type[i] instanceof ObjectType  )
+	{
+	  if ( varg_type[i].equals( Type.STRING ) )
+	  {
+	    sizeof_method = "string";
+	    sizeof_type = Type.STRING;
+	  }
+	  else
+	  {
+	    sizeof_method = "object";
+	    sizeof_type = TypeRepository.FastTransportable_type;
+
+	    CHECKCAST checkcast_op = factory.createCheckCast( TypeRepository.FastTransportable_type );
+	    il_invoke.append( checkcast_op );
+	  }
+	}
+	else
+	{
+	  // Campo sconosciuto
+	  sizeof_method = null;
+	  sizeof_type = null;
+	  Debug.println( "Tipo campo: " + varg_type[i].getSignature() + " non riconosciuto" );
+	  continue;
+	}
+
+	InvokeInstruction invoke_sizeof = factory.createInvoke( TypeRepository.SizeOf_fqn, sizeof_method, Type.INT, new Type[] { sizeof_type }, Constants.INVOKESTATIC );
+	il_invoke.append( invoke_sizeof );
+
+	++even;
+	if (even>1)
+	{
+	  il_invoke.append( iadd_op );
+	}
+      } // end else
+
+    } // end for
+
+    // sommiamo i primitivi
+
+    ihandle[0] = il_invoke.append( new PUSH( cpg, sizeof_primitives ) );
+    if (even>0)
+      il_invoke.append( iadd_op );
+
+    // framesize = ...
+    il_invoke.append( factory.createStore( Type.INT, framesize_index ) );
+
+    // new Container( );
+    Instruction new_op = factory.createNew( TypeRepository.Container_type );
+    il_invoke.append( new_op );
+    il_invoke.append( InstructionConstants.DUP );
+    il_invoke.append( InstructionConstants.DUP );
+    // tre riferimenti a container
+
+    // container = .. ; consuma il primo riferimento
+    il_invoke.append( factory.createStore( TypeRepository.Container_type, container_index ) );
+
+    // Container.init( framesize ); consuma il secondo riferimento
+    il_invoke.append( factory.createLoad( Type.INT, framesize_index ) );
+    InvokeInstruction init_op = factory.createInvoke( TypeRepository.Container_fqn, "<init>", Type.VOID, new Type[] { Type.INT }, Constants.INVOKESPECIAL );
+    il_invoke.append( init_op );
+
+    // Container.getContainerOutputStream( false/true ); consuma il terzo riferimento
+    il_invoke.append( new PUSH( cpg, even>0 ) );
+//    il_invoke.append( new PUSH( cpg, true ) );
+    InvokeInstruction invokeget_op = factory.createInvoke( TypeRepository.Container_fqn, "getContainerOutputStream", TypeRepository.cos_type, new Type[] { Type.BOOLEAN }, Constants.INVOKEVIRTUAL );
+    il_invoke.append( invokeget_op );
+
+    // cos = ...
+    ihandle[1] = il_invoke.append( factory.createStore( TypeRepository.cos_type, cos_index) );
+
+    for ( int i=0; i<varg_type.length; ++i )
+    {
+      String write_method;
+      Type write_type;
+
+      il_invoke.append( factory.createLoad( TypeRepository.cos_type, cos_index ) );
+      // index parte da uno, zero e' riservato per this
+      il_invoke.append( factory.createLoad(varg_type[i], varg_index[i] ) );
+
+      if ( varg_type[i] instanceof BasicType )
+      {
+	StringBuffer arg_typename = new StringBuffer( varg_type[i].toString() );
+	arg_typename.setCharAt( 0, Character.toUpperCase(arg_typename.charAt(0)) );
+
+//	Debug.println(field_typename.toString());
+
+	write_method = "write"+arg_typename;
+	write_type = varg_type[i];
+      } // end BasicType
+      else
+      if (varg_type[i] instanceof ArrayType )
+      {
+	write_method = "writeArray";
+	write_type = Type.OBJECT;
+      }
+      else
+//      if (varg_type[i] instanceof ObjectType  )
+      {
+	if (varg_type[i].equals( Type.STRING ) )
+	{
+	  write_method = "writeString";
+	  write_type = Type.STRING;
+	}
+	else
+	{
+	  write_method = "writeObject";
+	  write_type = TypeRepository.FastTransportable_type;
+
+	  CHECKCAST checkcast_op = factory.createCheckCast( TypeRepository.FastTransportable_type );
+	  il_invoke.append( checkcast_op );
+	}
+      } // end Type.Object
+
+      InvokeInstruction invoke_write = factory.createInvoke( TypeRepository.cos_fqn, write_method, Type.VOID, new Type[] { write_type }, Constants.INVOKEVIRTUAL );
+      il_invoke.append( invoke_write );
+
+    } // end for
+
+    // cos.close()
+    il_invoke.append( factory.createLoad( TypeRepository.cos_type, cos_index) );
+    il_invoke.append( factory.createInvoke( TypeRepository.cos_fqn, "close", Type.INT, Type.NO_ARGS, Constants.INVOKEVIRTUAL ) );
+    // rimuoviamo il risultato
+    il_invoke.append( InstructionConstants.POP );
+
+    // registry_services_reference.toRemoteServiceReference
+    il_invoke.append( factory.createLoad( Type.OBJECT, 0 ) );
+    Instruction getfield_op = factory.createGetField( TypeRepository.Stub_fqn, "registry_services_reference", TypeRepository.RegistryServicesReference_type );
+    il_invoke.append( getfield_op );
+    // registry_services_reference.toRemoteServiceReference( "f2", "(Laegis/X;[Laegis/X;I)[I" );
+    il_invoke.append( new PUSH( cpg, service_name ) );
+    il_invoke.append( new PUSH( cpg, service_signature ) );
+    InvokeInstruction toRSR_op = factory.createInvoke( TypeRepository.RegistryServicesReference_fqn, "toRemoteServiceReference", TypeRepository.RemoteServiceReference_type, new Type[] { Type.STRING, Type.STRING }, Constants.INVOKEVIRTUAL );
+    il_invoke.append( toRSR_op );
+
+    // rsr = ..
+
+    store_op = factory.createStore( TypeRepository.RemoteServiceReference_type, rsr_index );
+    il_invoke.append( store_op );
+
+    // new Callgram()
+    new_op = factory.createNew( TypeRepository.Callgram_type );
+    ihandle[2] = il_invoke.append( new_op );
+    il_invoke.append( InstructionConstants.DUP );
+    il_invoke.append( InstructionConstants.DUP );
+    // tre riferimenti a callgram
+
+    // callgram = ...; consuma il primo
+    store_op = factory.createStore( TypeRepository.Callgram_type, callgram_index );
+    il_invoke.append( store_op );
+
+    // preparazione degli argomenti della chiamata al costruttore
+    il_invoke.append( new PUSH(cpg, run.session.Callgram.CALL) );
+    il_invoke.append( factory.createLoad( TypeRepository.RemoteServiceReference_type, rsr_index) );
+    il_invoke.append( InstructionConstants.ACONST_NULL );
+    il_invoke.append( factory.createLoad( TypeRepository.Container_type, container_index ) );
+    // Callgram.init(  ); consuma il secondo
+    init_op = factory.createInvoke( TypeRepository.Callgram_fqn, "<init>", Type.VOID, TypeRepository.callgram_init_arg_type, Constants.INVOKESPECIAL );
+    il_invoke.append( init_op );
+
+    // Callgram rcv_callgram = Manager.execRemoteCall( callgram ); // consuma il terzo
+    Instruction invoke_op = factory.createInvoke( TypeRepository.Manager_fqn, "execRemoteCall", TypeRepository.Callgram_type, new Type[] { TypeRepository.Callgram_type }, Constants.INVOKESTATIC );
+    il_invoke.append( invoke_op );
+    // rcv_callgram = ...
+    store_op = factory.createStore( TypeRepository.Callgram_type, rcv_index );
+    ihandle[3] = il_invoke.append( store_op );
+
+    // callgram.free();
+    il_invoke.append( factory.createLoad( TypeRepository.Callgram_type, callgram_index ) );
+    il_invoke.append( factory.createInvoke( TypeRepository.Callgram_fqn, "free", Type.VOID, Type.NO_ARGS, Constants.INVOKEVIRTUAL ) );
+
+    // callgram = null
+    il_invoke.append( InstructionConstants.ACONST_NULL );
+    il_invoke.append( factory.createStore( TypeRepository.Callgram_type, callgram_index ) );
+
+    // Container res = rcv_callgram.getContainer();
+    il_invoke.append( factory.createLoad( TypeRepository.Callgram_type, rcv_index ) );
+    il_invoke.append( factory.createInvoke( TypeRepository.Callgram_fqn, "getContainer", TypeRepository.Container_type, Type.NO_ARGS, Constants.INVOKEVIRTUAL ) );
+    il_invoke.append( factory.createStore( TypeRepository.Container_type, res_index ) );
+
+    // Container.ContainerInputStream cis = res.getContainerInputStream( x );
+    il_invoke.append( factory.createLoad( TypeRepository.Container_type, res_index ) );
+    il_invoke.append( new PUSH( cpg, return_type instanceof ObjectType || return_type instanceof ArrayType ) );
+    il_invoke.append( factory.createInvoke( TypeRepository.Container_fqn, "getContainerInputStream", TypeRepository.cis_type, new Type[] { Type.BOOLEAN }, Constants.INVOKEVIRTUAL ) );
+
+    String read_method;
+    Type read_type;
+
+// A: fa coppia con B
+    // cis = ...
+    store_op = factory.createStore( TypeRepository.cis_type, cis_index );
+    ihandle[4] = il_invoke.append( store_op );
+
+    Instruction checkcast_op;
+
+    if ( return_type instanceof BasicType )
+    {
+      StringBuffer arg_typename = new StringBuffer( return_type.toString() );
+      arg_typename.setCharAt( 0, Character.toUpperCase(arg_typename.charAt(0)) );
+
+      read_method = "read"+arg_typename;
+//      Debug.println( read_method );
+      read_type = return_type;
+
+      checkcast_op = InstructionConstants.NOP;
+    } // end BasicType
+    else
+    if (return_type instanceof ArrayType )
+    {
+      read_method = "readArray";
+      read_type = Type.OBJECT;
+
+      checkcast_op = factory.createCheckCast( (ArrayType) return_type );
+    }
+    else
+    if (return_type instanceof ObjectType  )
+    {
+      if ( return_type.equals( Type.STRING )  )
+      {
+	read_method = "readString";
+	read_type = Type.STRING;
+
+	checkcast_op = InstructionConstants.NOP;
+      }
+      else
+      {
+	read_method = "readObject";
+	read_type = TypeRepository.FastTransportable_type;
+
+	checkcast_op = factory.createCheckCast( (ObjectType) return_type );
+      }
+    } // end Type.Object
+    else
+    {
+      // Campo sconosciuto
+      read_method = null;
+      read_type = null;
+      checkcast_op = InstructionConstants.NOP;
+      Debug.println( "Tipo campo: " + return_type.getSignature() + " non riconosciuto" );
+    } // end default
+
+    if ( return_index>=0 )
+    {
+      // B: fa coppia con A
+      Instruction load_op = factory.createLoad( TypeRepository.cis_type, cis_index );
+      il_invoke.append( load_op );
+
+       // cis.readInt();
+      InvokeInstruction invoke_read = factory.createInvoke( TypeRepository.cis_fqn, read_method, read_type, Type.NO_ARGS, Constants.INVOKEVIRTUAL);
+      il_invoke.append( invoke_read );
+      // int _f1 = cis.readInt();
+      il_invoke.append( checkcast_op );
+      il_invoke.append( factory.createStore(return_type, return_index) );
+    }
+
+    //  rcv_callgram.free();
+    ihandle[5] = il_invoke.append( factory.createLoad( TypeRepository.Callgram_type, rcv_index ) );
+    il_invoke.append( factory.createInvoke( TypeRepository.Callgram_fqn, "free", Type.VOID, Type.NO_ARGS, Constants.INVOKEVIRTUAL ) );
+
+    // rcv_callgram = null
+    ihandle[6] = il_invoke.append( InstructionConstants.ACONST_NULL );
+    il_invoke.append( factory.createStore( TypeRepository.Callgram_type, rcv_index ) );
+
+    // return return_res
+    if (return_index>=0)
+      il_invoke.append( factory.createLoad( return_type, return_index ) );
+    ihandle[7] = il_invoke.append( factory.createReturn(return_type) );
+
+    InstructionHandle try_start = il_invoke.getStart();
+    InstructionHandle try_end = il_invoke.getEnd();
+
+//    catch (ExecException exec_exception ) { throw new RemoteException( exec_exception.getMessage() ); }
+//    catch (SerializationException serialization_exception) { throw new RemoteException(serialization_exception.getMessage() ); }
+//    catch (TransportException transport_exception) { throw new RemoteException( transport_exception.getMessage() ); }
+//    InstructionHandle handler = il_invoke.append( factory.createInvoke( "java.lang.Exception", "getMessage", Type.STRING, Type.NO_ARGS, Constants.INVOKEVIRTUAL ) );
+
+    InstructionHandle[] handler = new InstructionHandle[3];
+
+    // variabile: exception
+    ObjectType exception_types[] = { TypeRepository.ExecException_type, TypeRepository.SerializationException_type, TypeRepository.TransportException_type };
+    String exception_names[] = { "exec_exception", "serialization_exception", "transport_exception" };
+
+    LocalVariableGen[] lg_exception = new LocalVariableGen[exception_names.length];
+    int[] exception_index = new int[exception_names.length];
+
+    for ( int i=0; i< lg_exception.length; ++i )
+    {
+      lg_exception[i] = mg_invoke.addLocalVariable( exception_names[i], exception_types[i], null, null );
+      exception_index[i] = lg_exception[i].getIndex();
+      store_op = factory.createStore( exception_types[i], exception_index[i] );
+      handler[i] = il_invoke.append( store_op );
+      lg_exception[i].setStart( handler[i] );
+      il_invoke.append( factory.createNew("run.RemoteException") );
+      il_invoke.append( InstructionConstants.DUP );
+      il_invoke.append( factory.createLoad( exception_types[i], exception_index[i] ) );
+      il_invoke.append( factory.createInvoke( "java.lang.Throwable", "getMessage", Type.STRING, Type.NO_ARGS, Constants.INVOKEVIRTUAL ) );
+      il_invoke.append( factory.createInvoke("run.RemoteException", "<init>", Type.VOID, new Type[] { Type.STRING }, Constants.INVOKESPECIAL ) );
+      il_invoke.append( InstructionConstants.ATHROW );
+      mg_invoke.addExceptionHandler( try_start, try_end, handler[i], exception_types[i] );
+    }
+
+    // aggiunge il throws
+//    mg_invoke.addException( "run.RemoteException" );
+
+
+    mg_invoke.setInstructionList( il_invoke );
+    int acc_flags = mg_invoke.getAccessFlags();
+    acc_flags &= ~ Constants.ACC_ABSTRACT;
+    mg_invoke.setAccessFlags( acc_flags );
+
+    // debug
+    for ( int i=0; i<8; ++i )
+      mg_invoke.addLineNumber( ihandle[i], i );
+
+    // finalizing
+    mg_invoke.setMaxStack();
+    mg_invoke.setMaxLocals();
+    cg.addMethod( mg_invoke.getMethod() );
+
+    // garbage-collection
+    il_invoke.dispose();
+    return;
+  } // end addStub
+
+}

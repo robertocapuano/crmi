@@ -1,0 +1,306 @@
+package run.transport;
+
+import java.net.*;
+
+/**
+ * Rappresenta un datagramma decodificato
+ *
+ * Formato di un datagramma UDP di dati
+ * (byte)CALL (int)session (int)totalnumber (int)packetnumber (byte)data[]
+ * 1            4             4                 4                []
+ *
+ * Formato di un datagramma UDP di controllo
+ *
+ * Inizio sessione
+ * (byte)INIT  (int)session (int)totalnumber (int)callgram_size (utf32)services_name (utf32)method_name
+ *
+ * Fine sessione
+ * (byte)DISC (int)session (int)totalnumber
+ *
+ * ACKI
+ * (byte)ACKI (int)session (int)totalnumber
+ *
+ * ACKD
+ * (byte)ACKD (int)session (int) totalnumber
+ *
+ * ACKn
+ * (byte)ACKN (int)session (int)totalnumber (int)packetnumber
+ *
+ */
+
+public class Packet
+{
+  // costanti
+  protected final static int START_OF_OPCODE = 0;
+  protected final static int START_OF_SESSION = 1;
+  protected final static int START_OF_TOTAL_NUMBER = 5;
+
+  // per il datagram dati
+  protected final static int START_OF_PACKET_NUMBER = 9;
+  protected final static int START_OF_DATA = 13;
+
+  // per il datagram init
+  protected final static int START_OF_CALLGRAM_SIZE = 9;
+  protected final static int START_OF_SERVICES_NAME = 13;
+
+  // dimensione dei packet escluso la parte variabile (dati/stringhe)
+  protected final static int SIZE_OF_PACKET_INIT = SizeOf.BYTE + 3 * SizeOf.INT; // minimo
+  protected final static int SIZE_OF_PACKET_CALL = SizeOf.BYTE + 3 * SizeOf.INT; // minimo
+  protected final static int SIZE_OF_PACKET_DISC = SizeOf.BYTE + 2* SizeOf.INT; // effettivi
+  protected final static int SIZE_OF_PACKET_ACKI = SizeOf.BYTE + 2* SizeOf.INT; // "
+  protected final static int SIZE_OF_PACKET_ACKD = SizeOf.BYTE + 2* SizeOf.INT; // "
+  protected final static int SIZE_OF_PACKET_ACKN = SizeOf.BYTE + 2* SizeOf.INT; // "
+
+  // dimensione dei datagram per le due reti, non usati
+  protected final static int SIZE_OF_UDP_DATAGRAM_ETHERNET = 1500-28;
+  protected final static int SIZE_OF_UDP_DATAGRAM_MYRINET = 3752-28;
+
+
+  // facilities
+
+  static Packet call( NetAddress _local_address, NetAddress _remote_address, int _session_id, int _total_number, int _packet_number, byte[] _frame )
+  {
+    Packet call_packet = new Packet( _local_address, _remote_address, _session_id, _total_number );
+    number = _packet_number;
+    data = frame;
+    data_size = frame.length;
+    // non serve dato che sono lo stesso valore
+    packet_size = Math.min( local_address.getMTU(), remote_address.getMTU() );
+    return call_packet;
+  }
+
+  static Packet init( NetAddress _local_address, NetAddress _remote_address, int _session_id, int _total_number, int _callgram_size, String _services_name, String _method_name )
+  {
+    Packet init_packet = new Packet( _local_address, _remote_address, Opcodes.INIT, _session_id, _total_number );
+    init_packet.callgram_size = _callgram_size;
+    init_packet.services_name = _services_name;
+    init_packet.method_name = _method_name;
+    return init_packet;
+  }
+
+  static Packet disc( NetAddress _local_address, NetAddress _remote_address, int _session_id, int _total_number )
+  {
+    Packet disc_packet = new Packet( _local_address, _remote_address, Opcodes.DISC, _session_id, _total_number );
+    return disc_packet;
+  }
+
+  static Packet acki( NetAddress _local_address, NetAddress _remote_address, int _session_id, int _total_number )
+  {
+    Packet acki_packet = new Packet( _local_address, _remote_address, Opcodes.ACKI, _session_id, _total_number );
+    return acki_packet;
+  }
+
+  static Packet ackd( NetAddress _local_address, NetAddress _remote_address, int _session_id, int _total_number )
+  {
+    Packet ackd_packet = new Packet( _local_address, _remote_address, Opcodes.ACKD, _session_id, _total_number );
+    return ackd_packet;
+  }
+
+  static Packet ackn( NetAddress _local_address, NetAddress _remote_address, int _session_id, int _total_number )
+  {
+    Packet ackn_packet = new Packet( _local_address, _remote_address, Opcodes.ACKN, _session_id, _total_number );
+    ackn_packet.packet_number = _packet_number;
+    return ackn_packet;
+  }
+
+
+  // dati del packet
+
+  // controllo
+  NetAddress remote_address;
+  NetAddress local_address;
+  int packet_size;
+
+  // comuni
+  byte opcode;
+  int session_id;
+  int total_number;
+
+  // call & ackn
+  int number = 0;
+  // call
+  byte[] data;
+  int data_size;
+
+  // init
+  int callgram_size = 0;
+  String services_name;
+  String method_name;
+
+  /**
+   * Inizializza un packet
+   */
+  public Packet( NetAddress _local_address, NetAddress _remote_address, byte _opcode, int _session_id, int _total_number )
+  {
+    local_address = _local_address;
+    remote_address = _remote_address;
+    opcode = _opcode;
+    session_id = _session_id;
+    total_number = _total_number;
+  }
+
+  /**
+   * Inizializza un packet con un Datagram in ingresso
+   */
+  public Packet( NetAddress _local_address, DatagramPacket datagram )
+  {
+    byte[] frame = datagram.getData();
+    container = new Container( new Frame( frame ) );
+    Container.ContainerInputStream cis = container.getContainerInputStream( false ); // nessun oggetto
+
+    remote_address = new IPAddress( datagram.getAddress(), datagram.getPort() );
+    local_address = _local_address;
+
+    // dimensione del pacchetto UDP
+    packet_size = local_address.getMTU();
+
+    opcode = cis.readByte();
+    session = cis.readInt();
+    total_number = cis.readInt();
+
+    switch (opcode)
+    {
+      case Opcodes.INIT:
+	callgram_size = cis.readInt();
+	services_name = cis.readString();
+	method_name = cis.readString();
+	data_size = 0;
+	number = 0;
+	break;
+      case Opcodes.CALL:
+	number = cis.readInt();
+	data_size = packet_size - SIZE_OF_PACKET_CALL;
+	data = new byte[ data_size ];
+	copyPacketDataToArray( frame, data, 0, data_size );
+	break;
+      case Opcodes.ACKN:
+	number = cis.readInt();
+	break;
+      case Opcodes.DISC:
+      case Opcodes.ACKI:
+      case Opcodes.ACKD:
+	// non hanno campi specifici
+	break;
+    }
+  }
+
+  /**
+   * Impacchetta il Packet in un datagram
+   */
+  public void write( DatagramPacket datagram )
+  {
+    int buffer_size;
+    Container container;
+    Container.ContainerOutputStream cos;
+
+    switch (opcode)
+    {
+      case Opcodes.INIT:
+        buffer_size = packet_size;
+        container = new Container( new Frame( buffer_size ) );
+	cos = container.getContainerOutputStream();
+
+	cos.writeByte( Opcodes.INIT );
+	cos.writeInt( session_id );
+	cos.writeInt( callgram_size );
+	cos.writeString( services_name );
+	cos.writeString( method_name );
+	break;
+
+      case Opcodes.CALL:
+	int buffer_size = SIZE_OF_PACKET_CALL + data_size;
+        container = new Container( new Frame( buffer_size ) );
+	cos = container.getContainerOutputStream();
+
+	cos.writeByte( Opcodes.CALL );
+	cos.writeInt( session_id );
+	cos.writeInt( packet_number );
+	// copiamo tutti i dati nel datagramma, non ci dovrebbe essere frammentazione
+	cos.writeByteArray( data );
+	break;
+
+      case Opcodes.DISC:
+      case Opcodes.ACKI:
+      case Opcodes.ACKD:
+      case Opcodes.ACKN:
+	buffer_size = SIZE_OF_PACKET_DISC; // tutte medesima lunghezza
+        container = new Container( new Frame( buffer_size ) );
+	cos = container.getContainerOutputStream();
+
+	cos.writeByte( opcode );
+	cos.writeInt( session_id );
+	cos.writeInt( total_number );
+	break;
+    }
+
+    byte[] buffer_data = container.getFrame().toArray();
+    datagram.setData( buffer_data );
+    datagram.setLength(buffer_size);
+    datagram.setAddress(remote_address.toInetAddress() );
+  }
+
+   /**
+   * Analizza un datagram: sezione dati
+   */
+  protected static byte[] copyPacketDataToArray( byte[] from_packet, byte[] to_array, int dest_index, int len )
+  {
+    System.arraycopy( from_packet, START_OF_DATA, to_array, dest_index, len);
+  }
+
+  // getter
+  final byte getOpcode()
+  {
+    return opcode;
+  }
+
+  final int getSessionId()
+  {
+    return session_id;
+  }
+
+  final int getTotalNumber()
+  {
+    return total_number;
+  }
+
+  final int getPacketNumber()
+  {
+    return packet_number;
+  }
+
+  final int getData()
+  {
+    return data;
+  }
+
+  final int getCallgramSize()
+  {
+    return callgram_size;
+  }
+
+  final String getServicesName()
+  {
+    return services_name;
+  }
+
+  final String getMethodName()
+  {
+    return method_name;
+  }
+
+  final NetAddress getRemoteAddress()
+  {
+    return remote_address;
+  }
+
+  final NetAddress getLocalAddress()
+  {
+    return local_address;
+  }
+
+  final int getDataSize()
+  {
+    return data_size;
+  }
+
+}

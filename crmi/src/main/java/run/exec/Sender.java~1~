@@ -1,0 +1,59 @@
+package rio.exec;
+
+/**
+ * Title:        Rio
+ * Description:  RmI over Myrinet
+ * Copyright:    Copyright (c) 2001
+ * Company:      unisa
+ * @author
+ * @version 1.0
+ */
+
+import rio.reference.*;
+import rio.transport.*;
+
+/**
+ * Gestisce l'invio dei messaggi remoti.
+ * Puo' gestire piu' richieste.
+ * Avra' una coda di richieste FIFO e le smista sulla rete.
+ */
+
+import rio.reference.*;
+
+public class Sender extends Thread {
+
+/**
+ * Indirizzo locale
+ */
+  protected static RemoteRefere local_reference;
+
+  static
+  {
+// inizializzazione del local_reference
+    local_reference = new RemoteReference();
+  }
+
+  public Sender() {
+  }
+
+/**
+ * In funzione dell'indirizzo remoto sceglie il trasporto.
+ */
+  public static Datagram send( RemoteReference remote, Container c )
+  {
+    Transport t = getTransport( "UDP" );
+    Datagram d = new Datagram( Opcode.CALL, remote, local_reference, c );
+
+    int id = t.send( d );
+
+    while ( ! t.dataReady( id ) )
+      Thread.sleep(10);
+
+    Datagram recv = t.receive( id );
+
+    return recv;
+  }
+
+//  public static receive()
+
+}

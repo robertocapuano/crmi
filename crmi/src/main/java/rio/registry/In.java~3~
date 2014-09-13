@@ -1,0 +1,67 @@
+package rio.registry;
+
+import run.reference.*;
+import run.serialization.Container;
+import run.stub_skeleton.Skeleton;
+import run.RemoteException;
+
+/**
+ * In e' contattato dal registry remoto su una interrogazione di un servizio globale.
+ */
+
+public class In extends Skeleton implements Services
+{
+  public In( Services _services )
+  {
+    super( _services );
+  }
+
+  // firma di register:
+  //
+  Container invoke_register_( Container container ) throws RemoteException
+  {
+    Container.ContainerInputStream cis = container.getContainerInputStream();
+
+    // parametri di ingresso
+    RegistryServicesReference registry_ref = cis.readObject( RegistryServicesReference.class );
+
+    try
+    {
+      Global.register( registy_ref );
+      Container res = new Container( SizeOf.VOID );
+//    Container.ContainerOutputStream cos = res.getContainerOutputStream();
+//    cos.writeVoid(  );
+      return res;
+    }
+    catch (RegistryException registry_exception )
+    {
+      RemoteException remote_exception = new RemoteException( registry_exception.getMessage() );
+      throw remote_exception;
+    }
+  }
+
+  Container invoke_lookup_12345678( Container container ) throws RemoteException
+  {
+    Container.ContainerInputStream cis = container.getContainerInputStream();
+
+    // parametri di ingresso
+    String services_name = cis.readString( );
+
+    try
+    {
+      RegistryServicesReference registry_ref = Global.lookup( services_name );
+
+      Container res = new Container( RegistryServicesReference.sizeOf() );
+      Container.ContainerOutputStream cos = res.getContainerOutputStream();
+      cos.writeObject( registry_ref );
+      return res;
+    }
+    catch (RegistryException registry_exception )
+    {
+      RemoteException remote_exception = new RemoteException( registry_exception.getMessage() );
+      throw remote_exception;
+    }
+
+  }
+
+}

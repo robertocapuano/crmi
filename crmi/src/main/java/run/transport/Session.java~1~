@@ -1,0 +1,237 @@
+package run.transport;
+
+import java.net.DatagramPacket;
+import java.util.*;
+
+/**
+ * Una sessione permette di identificare una serie di datagrammi UDP con un
+ * Callgramm, e da questo al CallgramListener.
+ * La sessione identifica una chiamata, quindi serve per comunicazione full-duplex
+ * La sessione e' orientata alla chiamata, quindi mette in evidenza due momenti
+ *
+ * Per il chiamante.
+ * L'invio del primo Callgram con il Marshalling degli argomenti della chiamata
+ * La ricezione della risposta o dell'Exception.
+ *
+ * Per il chiamato.
+ * La ricezione della chiamata,
+ * l'invio della risposta.
+ *
+ *
+ * Formato di un datagramma UDP di dati
+ * (byte)OPCODE (int)session (int)totalnumber (int)packetnumber (byte)data[]
+ * 1            4             4                 4                []
+ *
+ * Formato di un datagramma UDP di controllo
+ *
+ * Inizio sessione
+ * (byte)INIT  (int)session (int)totalnumber
+ *
+ * Fine sessione
+ * (byte)DISC (int)session (int)totalnumber
+ *
+ * ACKI
+ * (byte)ACKI (int)session (int)totalnumber
+ *
+ * ACKD
+ * (byte)ACKD (int)session (int) totalnumber
+ *
+ * ACKn
+ * (byte)ACKN (int)session (int)totalnumber (int)packetnumber
+ *
+ *  e la invia sulla rete. In base all'OPCODE del callgram decide quale indirizzo usare:
+ *  server o client, e in base al tipo di indirizzo quale rete usare.
+ *  Legge un callgramma in ingresso se e' presente
+ *  Gestisce lo sliding window in entrambi i versi.
+ *  La sessione gestisce la connessione, l'invio dei pacchetti, la ritrasmissione e la disconnessione.
+ *  Tutto questo con l'ausilio del UDPTransport
+ *
+ */
+
+public abstract class Session extends Thread
+{
+  // costanti
+  protected final static int START_OF_OPCODE = 0;
+  protected final static int START_OF_SESSION = 1;
+  protected final static int START_OF_TOTAL_NUMBER = 5;
+  protected final static int START_OF_CALLGRAM_SIZE = 9;
+  protected final static int START_OF_PACKET_NUMBER = 9;
+  protected final static int START_OF_DATA = 13;
+
+  protected final static int SIZE_OF_UDP_DATAGRAM_ETHERNET = 1500-24;
+  protected final static int SIZE_OF_UDP_DATAGRAM_MYRINET = 3752-24;
+
+  /**
+   * Trasporto associato alla sessione
+   */
+  private Transport transport;
+
+  /**
+   * Numero della sessione generato dal chiamante.
+   * Determinare il modo per generare un numero di sessione unico.
+   */
+  protected int session_id;
+
+  /**
+   * Ultimo pacchetto ricevuto/inviato
+   */
+  protected int packet_number;
+
+  /**
+   * Numero totali pacchetti ricevuti/inviati
+   */
+  protected int packet_total_number;
+
+  /**
+   * Callgram ricostruito/da inviare
+   */
+  protected Callgram callgram;
+
+  /**
+   * Dimensione del callgram da inviare/ricevere
+   */
+  protected int callgram_size;
+
+  /**
+   * Lista dei datagram da inviare/ricevuti
+   * E' un arraylist per l'accesso via ack n.
+   */
+  protected ArrayList datagram_list;
+
+
+  /**
+   * Crea un nuovo identificativo di sessione
+   */
+  protected static int newSessionId()
+  {
+    return Math.round( Math.random()*10000000 );
+  }
+
+
+  protected Session( Stringa session_name, Transport _transport )
+  {
+    super( session_name );
+    transport = _transport;
+
+    // avvio del manager
+    start();
+  }
+
+  /**
+   * Gestione della sessione
+   */
+  public abstract void run();
+
+  /**
+   * Segnala al listener (dispatcher) che e' arrivato/spedito un callgram
+   */
+
+  final protected void notifyListener()
+  {
+      transport.notifyCallback( callgram );
+  }
+
+
+  // Gestione della connessione
+
+  /**
+   * Init della connessione
+   */
+  protected abstract void init();
+
+  /**
+   * Riconoscimento di init
+   */
+  protected abstract void acki();
+
+  /**
+   * Invio di DISC
+   */
+  protected abstract void disc();
+
+  /**
+   *  Sconnessione: ACKD
+   */
+  protected abstract void ackd();
+
+
+  /**
+   * Ack N
+   */
+  protected abstract void ackn( int n );
+
+  /**
+   * Analizza un datagramma: opcode
+   */
+  protected static byte getOpcode( byte[] packet )
+  {
+    return packet[0];
+  }
+
+  /**
+   * Analizza un datagramma: session
+   */
+  protected static int getSessionId( byte[] packet )
+  {
+    int session = readInt(packet, START_OF_SESSION );
+    return session;
+  }
+
+  /**
+   * Analizza un datagramma: callgram size
+   */
+  protected static int getCallgramSize( byte[] packet )
+  {
+    int size = readInt(packet, START_OF_CALLGRAM_SIZE );
+    return size;
+  }
+
+  /**
+   * Analizza un datagramma: total number
+   */
+  protected static int getTotalNumber( byte[] packet )
+  {
+    int total_number = readInt( packet, START_OF_TOTAL_NUMBER );
+    return total_number;
+  }
+
+  /**
+   * Analizza un datagramma: packet number
+   */
+  protected static int getPacketNumber( byte[] packet )
+  {
+    int number = readInt( packet, START_OF_PACKET_NUMBER );
+    return number;
+  }
+
+  /**
+   * Analizza un datagramma: callgram size
+   */
+  protected static int getPacketNumber( byte[] packet )
+  {
+    int size = readInt( packet, START_OF_CALLGRAM_SIZE );
+    return size;
+  }
+
+  /**
+   * Analizza un datagram: sezione dati
+   */
+  protected static byte[] copyPacketDataToArray( byte[] packet, byte[] to_array, int dest_index, int len )
+  {
+    System.arraycopy(packet,START_OF_DATA, to_array, dest_index, len);
+  }
+
+  final protected static int readInt( byte[] frame, int pos  )
+  {
+    int res = frame[pos];
+    res <<= 8;
+    res += frame[ pos+1 ];
+    res <<= 8;
+    res += frame[ pos+2 ];
+    res <<= 8;
+    res += frame[ pos+3 ];
+
+    return res;
+  }
+}
+

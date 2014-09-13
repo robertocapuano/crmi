@@ -1,0 +1,37 @@
+package rio.registry;
+
+import run.reference.*;
+
+/**
+ * Invia le richieste a remoto
+ * Riceve le richieste da remoto ed interroga il RegistryImpl
+ */
+
+class Out extends Stub implements Services
+{
+
+  public Out( RemoteServicesReference remote_ref )
+  {
+    super( remote_ref );
+  }
+
+  /**
+   * 1. contatta l'host mandandogli RegistrySR
+   * 2. Riceve OK
+   */
+  void register( /*NetAddress registry_address, */RegistryServicesReference rsr ) throws RemoteException
+  {
+
+  }
+
+  /**
+   * 1. Contatta "host" chiedendogli RemoreSF
+   */
+  RemoteServicesReference lookup( NetAddress registry_address, String services_name ) throws RegistryException
+  {
+  }
+
+
+}
+
+

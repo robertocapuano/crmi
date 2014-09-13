@@ -1,0 +1,49 @@
+package rio.registry;
+
+/**
+ * Contiene l'associazione dei servizi ad oggetti remoti
+ */
+
+public class RegistryImpl
+{
+  /**
+   * Contiene il ClassLoader utilizzato dal sistema
+   */
+  protected static Clio ClusterClassLoader;
+
+  /**
+   * Per i servizi remoti Registra il RegistryServicesReference
+   * 1. Invia il RegistryServicesReference al nodo che contiene il registry
+   */
+  public static void register( NetAddress registry_address, RegistryServicesReference rsr )
+  {
+    RegistryOut.register( registry_address, rsr );
+  }
+
+  /**
+   * Per i servizi remoti restituisce il RegistryServicesReference associato al service_name
+   * 1. Invia al nodo remoto la richiesta del services_name
+   * 2. Il nodo remoto inpacchetta il RSR e lo rispedisce
+   * 3. Il registry istanza uno stub
+   */
+  public static RegistryServicesReference lookup( NetAddress registry_address, String services_name )
+  {
+    return RegistryOut.lookup( registry_address, services_name );
+  }
+
+  /**
+   * Interrograzioni su servizi locali, Memorizza un servizio locale
+   * Associa services_name al LSR
+   */
+  static void register( LocalServicesReference lsr  )
+  {
+
+  }
+
+  /**
+   * Interrogazioni su servizi locali, restituisce LSF dato RSF interrogato dal Dispatcher
+   */
+  static LocalServicesReference lookup( RemoteServicesReference rsr )
+  {
+  }
+}

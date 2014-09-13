@@ -1,0 +1,164 @@
+package run.session;
+
+
+import run.reference.*;
+import run.serialization.Container;
+import run.transport.*;
+
+/**
+ * Callgram rappresenta un pacchetto di informazioni inviati/da inviare a remoto
+ * Contiene un frame.
+ * Formato serializzato:
+ * (byte)Opcode (byte)LITTLE_ENDIAN RemoteServicesReference  CallerReference Container
+ * RemoteServicesReference: ( (UTF8)service_name (UTF8)method_name (byte)NetAddressType NetAddress) )
+ * CallerReference: (byte)NetAddressType NetAddress
+ * Container: Frame
+ * Frame: (int)length byte[length]
+ */
+
+public class Callgram {
+
+// Valori per opcodes
+
+  /**
+   * Nessuna operazione
+   */
+  public static final byte NOP = 0x00;
+
+  /**
+   * Callgram: Chiamata di un metodo
+   */
+  public static final byte CALL = 0x01;
+
+  /**
+   * Callgram: Valore di ritorno di un metodo
+   */
+  public static final byte RETURN = 0x02;
+
+  /**
+   * Callgram: REMOTE_EXCEPTION
+   */
+  public static final byte REMOTE_EXCEPTION = 0x03;
+
+  /**
+   * Distribuited Garbage Collection
+   */
+  public static final byte DGC = 0x82;
+
+  /**
+   * Callgram: ERRORE: chiamata non eseguita
+  public static final byte ERROR = -1;
+   */
+
+  /**
+   * tipo di CPU del sender
+   */
+  protected boolean little_endian;
+
+  /**
+   * operazione che trasmette il container
+   */
+  protected int operation;
+
+  /**
+   * Valore di ritorno
+   */
+  protected int return_value;
+
+  /**
+   * se container==null indica una operazione di servizio
+   */
+  protected Container container;
+
+  /**
+   * Sessione che ha trasmesso il callgram
+   */
+  protected Session session;
+
+  /**
+   * Listenerdel callgram
+   */
+  protected CallgramListener listener;
+
+  /**
+   * tipo di CPU del frame: little-endian/big-endian
+   * Renderlo indipendente dalla piattaforma
+   * intel = little-endian
+   * java = big-endian
+   */
+  public static final boolean isLittleEndian() { return true; }
+
+  public Callgram( byte _opcode, int _return_value, RemoteServicesReference _services, CallgramListener _listener, Container _container )
+  {
+    opcode = _opcode;
+    return_value = _return_value;
+    services_ref = _services;
+    container = _container;
+    listener = _listener;
+    little_endian = isLittleEndian();
+  }
+
+  public final byte getOperation()
+  {
+    return operation;
+  }
+
+  public final RemoteServicesReference getRemoteServicesReference()
+  {
+    return services_ref;
+  }
+
+  public final void setRemoteServicesReference( RemoteServicesReference remote )
+  {
+    services_ref = _services;
+  }
+
+  public final void setListener( CallgramListener _listener )
+  {
+    listener = _listener;
+  }
+
+  public final CallgramListener getListener( )
+  {
+    return listener;
+  }
+
+  public final Container getContainer()
+  {
+    return container;
+  }
+
+  public final Session getSession()
+  {
+    return session;
+  }
+
+  final void setSession( Session _session )
+  {
+    session = _session;
+  }
+
+  public final int getReturnValue()
+  {
+    return return_value;
+  }
+
+  /**
+   * Riferimento al servizio richiesto
+   * Il campo rimane costante in entrambe le direzione della chiamate.
+   * In base all'opcode il transport decide da quale campo prelevare
+   * l'indirizzo di destinazione.
+   */
+  private RemoteServicesReference services_ref;
+
+  /**
+   * Indirizzo del mittente.
+   * Il campo rimane costante in entrambe le direzione della chiamate.
+   * In base all'opcode il transport decide da quale campo prelevare
+   * l'indirizzo di destinazione.
+    non usato
+  private CallerReference caller_ref;
+   */
+
+}
+

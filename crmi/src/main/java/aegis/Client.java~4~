@@ -1,0 +1,29 @@
+package aegis;
+
+import rio.registry.Registry;
+import rio.registry.RegistryException;
+
+import run.RemoteException;
+import run.transport.IPAddress;
+
+public class Client {
+
+  public Client()
+  {
+  }
+
+  public static void main(String[] args) throws RegistryException, RemoteException
+  {
+//    Client client1 = new Client();
+    IPAddress service_address =
+    Registry.register();
+    X x = new X( 1, 2, new int[] { 3,4,5 } );
+
+//    Rs remote_services = (Rs) Registry.lookup( "127.0.0.1", "aegis" );
+    Rs remote_services = (Rs) Registry.lookup( "aegis" );
+
+    int res = remote_services.f1( x, new int[] { 6,7,8}, 9 );
+
+    System.out.println( res );
+  }
+}

@@ -1,0 +1,117 @@
+package rio.registry;
+
+//import java.lang.reflect.*;
+import java.util.*;
+
+import run.reference.*;
+import run.Services;
+
+/**
+ * Contiene l'associazione tra servizi ed oggetti locali
+ */
+
+public class Local implements Services
+{
+  /**
+   * Mappa services_name --> LocalServicesReference
+   */
+  protected static Map local_servicetable =  new HashMap();
+
+  static Service[] services;
+
+  static
+  {
+    // aggiunge i servizi del registry, al pool di servizi locali
+    Service register_svc = new Service( "register", "(Lrun/reference/LocalServicesReference;)V" );
+    Service lookup_svc = new Service("lookup", "(Lrun/reference/RemoteServiceReference;)Lrun/reference/LocalServicesReference;" );
+    Local.services = new Service[] { register_svc, lookup_svc };
+
+    LocalServicesReference registry_ref = new LocalServicesReference( "Registry", Local.services, new In( null /*servizi sono tutti static*/ ) );
+    local_servicetable.add( "Registry", registry_ref );
+  }
+
+  /**
+   * Interrograzioni su servizi locali, Memorizza un servizio locale
+   * Associa services_name al LSR
+   */
+  static void register( LocalServicesReference lsr ) throws RegistryException
+  {
+    String services_name = lsr.getServicesName();
+
+    if ( local_servicetable.get( services_name )==null )
+      local_servicetable.add( services_name, lsr );
+    else
+      throw new RegistryException( "Services already bounded: " + services_name );
+  }
+
+  /**
+   * Interrogazioni su servizi locali, restituisce LSF dato RSF interrogato dal Dispatcher
+   */
+  static LocalServicesReference lookup( RemoteServiceReference remote_ref ) throws RegistryException
+  {
+    String services_name = remote_ref.getServicesName();
+
+    LocalServicesReference local_ref = (LocalServicesReference) local_servicetable.get( services_name );
+    if (local_ref!=null)
+      return local_ref;
+    else
+      throw new RegistryException( "Unknown services exception: " + services_name );
+  }
+
+  static Stub newStub( RegistryServicesReference registry_ref )
+  {
+    Class stub_class;
+    String services_classname = registry_ref.getServicesClassname();
+
+    try
+    {
+      stub_class = ClusterClassLoader.loadClass( Stub.getClassname( services_classname ) );
+    }
+    catch (ClassNotFoundException cnfe )
+    {
+      Class stub_class;
+      Class skeleton_class;
+      // si generano entrame le classi per stub/skeleton
+      SSGenerator ssg = new SSGenerator( services_classname );
+
+      stub_class = ssg.generateStub();
+      skeleton_class = ssg.generateSkeleton();
+      ClusterClassLoader.add( stub_class );
+      ClusterClassLoader.add( skeleton_class );
+    }
+
+    Class[] params = new Class[] { RegistryServicesReference.class };
+    Constructor constructor = stub_class.getConstructor( params );
+
+    return constructor( new Object[] { registry_ref } );
+  }
+
+  static Skeleton newSkeleton( RegistryServicesReference registry_ref, Services _services )
+  {
+    Class skeleton_class;
+    String services_classname = registry_ref.getServicesClassname();
+
+    try
+    {
+      skeleton_class = ClusterClassLoader.loadClass( Skeleton.getClassname( services_classname ) );
+    }
+    catch ( ClassNotFoundException cnfe )
+    {
+      Class stub_class;
+      Class skeleton_class;
+      // si generano entrame le classi per stub/skeleton
+      SSGenerator ssg = new SSGenerator( services_classname );
+
+      stub_class = ssg.generateStub();
+      skeleton_class = ssg.generateSkeleton();
+      ClusterClassLoader.add( skeleton_class );
+      ClusterClassLoader.add( stub_class );
+    }
+
+    Class[] params = new Class[] { Services.class };
+    Constructor constructor = skeleton_class.getConstructor( params );
+
+    return constructor( new Object[] { _services } );
+  }
+
+}

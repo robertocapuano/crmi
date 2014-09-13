@@ -1,0 +1,58 @@
+package run.reference;
+
+import java.net.InetAddress;
+
+import run.serialization.Container;
+import run.transport.NetAddress;
+
+/**
+ * Lato client.
+ * Rappresenta un riferimento (indirizzo) di un oggetto (servizio) remoto.
+ */
+
+public class RemoteServicesReference {
+
+  /**
+   * Indirizzo dell'host: usato dal transport del lato client per trasmettere il callgramm
+   */
+  private NetAddress destination_address;
+
+  /**
+   * Servizi (oggetto)
+   */
+  private String services_name;
+
+
+  /**
+   * Firma del metodo del servizio
+   */
+  private String method_name;
+
+  /**
+   * Firma del metodo del servizio
+   */
+  private String method_signature;
+
+  public RemoteServicesReference( NetAddress net_address, String _services_name, /*, String _services_classname,*/ String _method_signature)
+  {
+    destination_address = net_address;
+    services_name = _services_name;
+    method_signature = _method_signature;
+  }
+
+  public final String getMethodSignature()
+  {
+    return method_signature;
+  }
+
+  public final String getServicesName()
+  {
+    return services_name;
+  }
+
+  public final NetAddress getDestinationAddress()
+  {
+    return destination_address;
+  }
+
+}

@@ -1,0 +1,229 @@
+package run.session;
+
+import java.util.*;
+
+/**
+ * Associa una numero di sessione ad una sessione
+ * La session table e' condivisa da tutti i Transport
+ *
+ * La stesso session_id identifica l'invio degli argomenti e della risposta.
+ * Dopo l'invio degli argomenti, gli oggetti SessionReceive, SessionSend vengono distrutti e creati due nuovi con medesimi id
+ * Tutto all'interno dello stesso collegamento. Il cambio di direzione e' segnalato dal messeggio RET/ACKR
+ */
+
+public class SessionTable
+{
+  /**
+   * HashMap delle sessioni aperte
+   */
+  static protected Hash session_table;
+
+  /**
+   * Pool delle SessionSend
+   */
+  static protected SessionSendPool send_pool;
+
+  /**
+   * Pool delle SessionReceive
+   */
+  static protected SessionReceivePool receive_pool;
+
+  static
+  {
+    session_table = new HashMap();
+    send_pool = new SessionSendPool( "SessionSendPool" );
+    receive_pool = new SessionReceivePool( "SessionReceivePool" );
+
+    /*
+    ** inizializza la session_table con due sessioni:
+    ** 1. la session del servizio registry
+    ** 2. la session del servizio ping
+    */
+
+    int registry_session_id = init_packet.getSessionId();
+    SessionReceive receive_session = (SessionReceive) receive_pool.get();
+    int receive_session_id = REGISTRY_SESSION_ID;
+    receive_session.initSession( receive_session_id, transport_list[i], null, null );
+    add( receive_session_id, receive_session );
+
+  }
+
+  /**
+   * Crea un nuovo identificativo di sessione
+   */
+  protected static int newSessionId()
+  {
+    return Random.rand( 1, Integer.MAX_VALUE );
+  }
+
+  // gestione della hashmap
+  protected synchronized static Session get( int id )
+  {
+    return (Session) session_table.get( new Integer( id ) );
+  }
+
+  protected synchronized static void add( int id, Session new_session )
+  {
+    session_table.put( new Integer( id ), new_session );
+  }
+
+  protected synchronized static void remove( int id )
+  {
+    session_table.remove( new Integer( id ) );
+  }
+
+  // gestione delle Session Pool
+
+  /**
+   * Rimuove la sessione dalla session_table e la restituisce al pool
+   */
+  public static void free( SessionSend session )
+  {
+    remove( session.getSessionId() );
+    send_pool.put( session );
+  }
+
+  /**
+   * Rimuove la sessione dalla session_table e la restituisce al pool
+   */
+  public static void free( SessionReceive session )
+  {
+    remove( session.getSessionId() );
+    receive_pool.put( session );
+  }
+
+  /**
+   * Crea una nuova sessione all'arrivo di un datagram di init
+   */
+  protected static SessionReceive newSessionReceive( Packet init_packet )
+  {
+    int receive_session_id = init_packet.getSessionId();
+    SessionReceive receive_session = (SessionReceive) receive_pool.get();
+
+    receive_session.initSession( init_packet.getSessionId(), init_packet.getTransport(), init_packet.getRemoteAddress(), Dispatcher.getDispatcher() );
+    add( receive_session_id, receive_session );
+//  return receive_session.receive( packet );
+    return receive_session;
+  }
+
+  /**
+   * Cambio di direzione, sostituzione dell'oggetto SessionSend con SessionReceive
+   */
+  public static SessionReceive reverseSendToReceive( SessionSend session_send )
+  {
+    int session_id = session_send.getSessionId();
+
+    session_receive = receive_pool.get();
+    session_receive.initSession( session_send.getSessionId(), session_send.getTransport(), session_send.getRemoteAddress(), session_send.getListener() );
+
+    free( session_send );
+
+    add( session_id, session_receive );
+  }
+
+  /**
+   * Crea una nuova sessione e vi invia un Callgram sul trasporto.
+   */
+  public static SessionSend newSessionSend( NetAddress remote_address )
+  {
+    Transport transport = TransportTable.getTransport( remote_address );
+    int send_session_id = newSessionId();
+    SessionSend send_session = (SessionSend) send_pool.get();
+
+    send_session.initSession( send_session_id, transport, remote_address,  null, transport.getSuggestedWindowSize()  );
+    add( send_session_id, new_session );
+
+    return send_session;
+  }
+
+  /**
+   * Cambio di direzione, sostituzione dell'oggetto SessionReceive con SessionSend
+   */
+  public static SessionSend reverseReceiveToSend( SessionReceive session_receive )
+  {
+    session_send = send_pool.get();
+
+    session_send.initSession( session_receive.getSessionId(), session_receive.getTransport(), session_receive.getRemoteAddress(), session_receive.getListener(), session_receive.getTransport().getSuggestedWindowSize() );
+    free( session_receive );
+
+    add( session_send.getSessionId(), session_send );
+
+    return session_send;
+  }
+
+  /**
+   * Da SessionReceive: smista un datagramma sull'apposita sessione
+   */
+  public static Packet dispatch( Packet packet )
+  {
+    if ( packet.getOpcode() != Opcodes.INIT && packet.getOpcode() != Opcodes.RET ) // caso piu' frequente
+    {
+      int session_id = packet.getSessionId();
+      Session session = get( session_id );
+      // sessione esistente
+      Debug.assert( session != null );
+
+      // lo smistiamo
+      if (session != null)
+      // ritorniamo il packet di risposta
+	return session.receive( packet );
+      else
+	// il pacchetto non e' di init e non e' associata una sessione lo scartiamo
+	return nop_packet;
+    }
+    else
+    if ( packet.getOpcode() == Opcodes.INIT)
+    {
+      // sessione non esistente
+      Debug.assert( get( packet.getSessionId()) == null );
+      // crea nuova sessione
+      Session rcv_session = newReceiveSession( packet );
+      return rcv_session.receive( packet );
+//      return receive( packet );
+    }
+    else
+    if (packet.getOpcode() == Opcodes.RET )
+    {
+      // Sessione esistente di tipo SessionSend
+      Debug.assert( get( packet.getSessionId()) instanceof SessionSend );
+
+      int session_id = packet.getSessionId();
+      SessionSend session_send = (SessionSend) get( session_id );
+      SessionReceive rcv_session = reverseSendToReceive( session_send );
+
+      return rcv_session.receive( packet );
+    }
+    // mai verificato
+    else
+    {
+      return null;
+    }
+  }
+
+
+  /**
+   * Main: effettua l'apha test delle Sessioni
+  public static void main( String[] args )
+  {
+    Transport[] transport_list = getTransportList();
+
+    if (args[0].equalsIgnoreCase("client") )
+    {
+      CallgramListener listener = new CallgramListener()
+      {
+	void
+      SessionSend session_send = newSessionSend( transport_list[0] );
+      Callgram callgram = new Callgram( Callgram.PING, new RemoteServicesReference( transport_list[i].getAddress(), "", "" ), tester, container );
+
+    }
+    else
+    if (args[0].equalsIgnoreCase("server"))
+    {
+
+    }
+
+    return;
+  }
+   */
+
+}

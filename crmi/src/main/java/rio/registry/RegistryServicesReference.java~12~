@@ -1,0 +1,222 @@
+package rio.registry;
+
+import java.util.ArrayList;
+/*
+import java.lang.reflect.*;
+*/
+
+import com.borland.primetime.util.Debug;
+
+import de.fub.bytecode.*;
+import de.fub.bytecode.classfile.*;
+
+import run.stub_skeleton.Skeleton;
+import run.serialization.*;
+import run.transport.NetAddress;
+
+import run.Services;
+import run.Transportable;
+import run.reference.*;
+import run.SizeOf;
+
+/**
+ * Rappresenta il record di un servizio implementato su un host.
+ * Il record e' memorizzato nel Registry. Viene spedito attraverso la rete, da un registry ad un altro.
+ * Tramite i callgram.
+ */
+
+public class RegistryServicesReference implements Transportable
+{
+  /**
+   * Indirizzo dell'host su cui e' implementato il servizio
+   */
+  NetAddress remote_address;
+
+  /**
+   * Nome dei servizi implementati. Es.: SlideShow
+   */
+  String services_name;
+
+  /**
+   * Nome della classe che implementa i servizi, il file Class sara' ricavato via ClassLoader
+   * Il tipo serve al registry per caricare lo Stub.
+   * Es.: aegis.Aegis
+   */
+  String services_classname;
+
+  /**
+   * Nomi e firme dei metodi disponibili sul servizio.
+   * Es.: get(),           (V)V
+   *      String[] list()  (V)[java/lang/String;
+   */
+  Service[] service_list;
+
+  public RegistryServicesReference()
+  {
+  }
+
+/*
+  public RegistryServicesReference( LocalServicesReference lsr )
+  {
+
+  }
+*/
+
+  RegistryServicesReference( NetAddress _remote_address, String _services_name, Class services_impl )
+  {
+    remote_address = _remote_address;
+    services_name = _services_name;
+    services_classname = services_impl.getName();
+//    String services_impl_classname =
+
+    // services_full_classname == "aegis.Server"
+    //    String services_full_classname = services.getClass().getName();
+    // services_classname == "Server"
+    //    services_classname = services_full_classname.substring( services_full_classname.lastIndexOf('.')+1, services_full_classname.length() );
+    // services_classname = "interface Rs"
+    //    services_classname = services.getClass().getInterfaces[0];
+
+
+    JavaClass services_clazz = Repository.lookupClass(services_classname);
+
+    try
+    {
+
+      if (services_clazz==null)
+      {
+	services_clazz = new ClassParser( services_classname ).parse();
+      }
+
+      Method[] method_list = services_clazz.getMethods();
+
+//      Method[] method_list = services_impl.getMethods();
+
+      ArrayList service_arraylist = new ArrayList();
+
+      for ( int i=0; i<method_list.length; ++i )
+      {
+	ExceptionTable exception_table = method_list[i].getExceptionTable();
+//	Class exception_table[] = method_list[i].getExceptionTypes();
+	if (exception_table!=null)
+	{
+	  String[] exception_names = exception_table.getExceptionNames();
+
+	  search_remote_exception:
+	    for ( int j=0; j<exception_names.length; ++j )
+  //	  for ( int j=0; j<exception_table.length; ++j )
+	    {
+	      // alla ricerca di metodi remoti
+	      if (exception_names[j].equals("run.RemoteException"))
+  //	    if (exception_table[j].equals("run.RemoteException"))
+	      {
+		service_arraylist.add( new Service( method_list[i].getName(), method_list[i].getSignature() ) );
+		break search_remote_exception;
+	      }
+	    } // end search_remote_exception
+	}
+      }
+
+      service_list = (Service[]) service_arraylist.toArray( new Service[0] );
+    }
+    catch (java.io.IOException ioe )
+    {
+      Debug.print( "Class: " + services_classname + " not loadable" );
+    }
+
+
+
+//    services_list = new Service[methods.length];
+
+//    for ( int i=0; i<methods.length; ++i )
+//    {
+//      services_list[i] = new Service( methods[i].getName, methods[i].getSignature() );
+//    }
+
+  }
+
+  public final String getServicesName()
+  {
+    return services_name;
+  }
+
+  public final String getServicesClassname()
+  {
+    return services_classname;
+  }
+
+  /**
+   * Fase di registrazione, lato server.
+   */
+  LocalServicesReference toLocalServicesReference( Skeleton _skeleton )
+  {
+    LocalServicesReference lsr = new LocalServicesReference( services_name, service_list, _skeleton );
+    return lsr;
+  }
+
+  /**
+   * Fase di invocazione, lato client.
+   */
+  public RemoteServiceReference toRemoteServiceReference( String name, String signature )
+  {
+    // codice per il debug
+    int i;
+
+    for ( i=0; i<service_list.length; ++i )
+    {
+      if (service_list[i].getName().equals( name ) && service_list[i].getSignature().equals(signature) )
+	break;
+    }
+
+    // precondizione: il servizio esiste
+    Debug.assert( i<service_list.length );
+
+    RemoteServiceReference rsr = new RemoteServiceReference( remote_address, services_name, service_list[i] );
+
+    return rsr;
+  }
+
+  /**
+   * Fase di invocazione, lato client.
+   */
+  RemoteServiceReference toRemoteServiceReference( int i )
+  {
+    Debug.assert( i< service_list.length );
+
+    RemoteServiceReference rsr = new RemoteServiceReference( remote_address, services_name, service_list[i] );
+
+    return rsr;
+  }
+
+  public void setRemoteAddress( NetAddress _remote_address )
+  {
+    remote_address = _remote_address;
+  }
+
+  /**
+   * Serializzazione: writeObject()
+   */
+  public final void writeObject( Container.ContainerOutputStream cos ) throws SerializationException
+  {
+    cos.writeObject( remote_address );
+    cos.writeString( services_name );
+    cos.writeString( services_classname );
+    cos.writeObjectArray( service_list );
+  }
+
+  /**
+   * Serializzazione: readObject()
+   */
+  public final void readObject( Container.ContainerInputStream cis ) throws SerializationException
+  {
+    remote_address = (NetAddress) cis.readObject(NetAddress.class);
+    services_name = cis.readString();
+    services_classname = cis.readString();
+    service_list = (Service[]) cis.readObjectArray( Service.class );
+  }
+
+  public final int sizeOf()
+  {
+    return remote_address.sizeOf() + SizeOf.string(services_name) + SizeOf.string(services_classname) + SizeOf.objectArray(service_list);
+  }
+
+}

@@ -1,0 +1,49 @@
+package run.reference;
+
+import run.stub_skeleton.Skeleton;
+
+/**
+ * Lato Server.
+ * Riferimento al servizio. Contiene tutta la lista dei metodi del servizio.
+ */
+
+public class LocalServicesReference
+{
+  /**
+   * Nome del servizio
+   */
+  String services_name;
+
+  /**
+   * Nomi e firme dei metodi disponibili per il servizio
+   */
+  Service[] service;
+
+  /**
+   * Reference all'oggetto che implementa il servizio.
+   */
+  Skeleton skeleton;
+
+  public LocalServicesReference(String _services_name, Service[] _methods, Skeleton _skeleton)
+  {
+    services_name = _services_name;
+    service = _methods;
+    skeleton = _skeleton;
+  }
+
+  public final String getServicesName()
+  {
+    return services_name;
+  }
+
+  public final Skeleton getSkeleton()
+  {
+    return skeleton;
+  }
+
+  public final void setSkeleton( Skeleton _skeleton )
+  {
+    skeleton = _skeleton;
+  }
+
+}

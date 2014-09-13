@@ -1,0 +1,103 @@
+package run.exec;
+
+import com.borland.primetime.util.Debug;
+
+import run.session.*;
+
+/**
+ * Tre momenti nell'invio.
+ * 1) Invio del callgram, avviato da Transport.send ed ha il suo thread.
+ * 2) Lettura del risultato e morizzazione via set()
+ * 3) Restituzione del risultato via get()
+ */
+
+public class Pusher implements CallgramListener
+{
+  /**
+   * TIMEOUT prima di una verifica
+   */
+  protected static long TIME_OUT = 1000; // 1 secondo
+
+  /**
+   * Pool a cui appartiene il pusher
+  PusherPool pusher_pool;
+   */
+
+  Callgram callgram_rcv;
+  Callgram callgram_sent;
+
+  /**
+   * Dati della chiamata
+   */
+/*
+  Pusher( PusherPool _pool)
+  {
+    pusher_pool = _pool;
+  }
+*/
+
+  Pusher( )
+  {
+    super();
+  }
+
+  void free()
+  {
+    // la SessionSend e' gia' stata rimossa
+    callgram_sent = null;
+
+    SessionTable.free( (SesssionReceive) callgram_rcv.getSession() );
+    callgram_rcv = null;
+
+//    pusher_pool.put( this );
+  }
+
+  void send( Callgram callgram )
+  {
+    status = Opcodes.CALL;
+    callgram_sent = callgram;
+    callgram_rcv = null;
+
+    SessionSend send_session = SessionTable.newSessionSend( callgram.getRemoteAddress() );
+
+    callgram.setCallgramListener( this );
+    send_session.send( callgram );
+  }
+
+  /**
+   * Restituisce la risposta quando l'avra' ricevuta da remoto.
+   */
+  synchronized public Callgram get( )
+  {
+    while ( callgram_rcv == null )
+      try { wait( TIME_OUT ); } catch (InterruptedException ie ) { Debug.print( ie ); }
+
+    return callgram_rcv;
+  }
+
+  synchronized private void set( Callgram _callgram_rcv )
+  {
+    callgram_rcv = _callgram_rcv;
+
+    notifyAll();
+  }
+
+  /**
+   * Listener degli eventi del callgram
+   */
+  public void execCall( Callgram callgram_event )
+  {
+    // completato l'invio
+    if (callgram_event.operation==Callgram.CALL)
+    {
+      // NOP
+    }
+    else
+    if (status==Opcodes.RET)
+    {
+      // risposta
+      set( callgram_event );
+    }
+  } // end execCall
+
+} // end Pusher

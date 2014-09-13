@@ -1,0 +1,89 @@
+package aegis;
+
+import run.serialization.Container;
+import run.reference.RemoteServiceReference;
+import run.Services;
+
+import run.stub_skeleton.Stub;
+
+public class rs_Stub extends Stub implements Rs // Nota: Rs extends services
+{
+  public rs_Stub( RegistryServicesReference rsr )
+  {
+    super( rsr );
+  }
+
+  // primo servizio
+
+  int f1( X x, int[] ia, int i ) throws RemoteException
+  {
+    int f1_framesize = x.sizeOf() + SizeOf.array(ia) + SizeOf.INT;
+
+    Container container = new Container( f1_framesize );
+
+    // true indica che serializzeremo anche oggetti quindi creare la reference_table
+    Container.ContainerOutputStream cos = container.getContainerOutputStream( true );
+
+    cos.writeInt( i );
+    cos.writeIntArray( ia );
+    cos.writeObject( x );
+
+    // migliorare qui per l'individuazione del servizio remoto.
+    // firma aggiunta a "mano"
+    RemoteServiceReference remote_services_reference = registry_services_reference.toRemoteServiceReference( "f1", "(aegis/X;[II)I" );
+    Callgram callgram = new Callgram( Callgram.CALL, 0, remote_services_reference, null, container );
+
+    Callgram rcv_callgram = Manager.execCall( callgram );
+
+    Container res = rcv_callgram.getContainer();
+
+    // argomento false: il risultato e' un primitivo
+    Container.ContainerInputStream cis = res.getContainerInputStream( false );
+
+    int _f1 = cis.readInt();
+    return _f1;
+  }
+
+/**
+ *  secondo servizio
+ */
+
+  int[] f2( X x, X[] xa, int i ) throws RemoteException;
+  {
+    int f2_framesize = x.sizeOf() + Sizeof.array( xa ) + SizeOf.INT;
+
+    Container container = new Container( f1_framesize );
+
+    // true indica che serializzeremo anche oggetti quindi creare la reference_table
+    Container.ContainerOutputStream cos = c.getContainerOutputStream( true );
+
+/**
+ *  Sullo stream i campi sono ordinati per tipo e per ordine alfabetico.
+ * quindi prima i bytes, chars, float, ..
+ * poi gli array...di primitivi
+ * le matrici (?)
+ * gli oggetti
+ * gli array di oggetti
+ * le matrici di oggetti (?)
+ */
+    cos.writeInt( i );
+    cos.writeObject( x );
+    cos.writeObjectArray( xa );
+
+    // migliorare qui per l'individuazione del servizio remoto.
+    // firma aggiunta a "mano"
+    RemoteServiceReference remote_services_reference = registry_services_reference.toRemoteServiceReference( "f2", "(aegis/X;[aegis/X;I)[I" );
+    Callgram callgram = new Callgram( Callgram.CALL, 0, remote_services_reference, null, container );
+
+    Callgram rcv_callgram = Manager.execCall( callgram );
+
+    Container res = rcv_callgram.getContainer();
+
+    // argomento false: il risultato e' un primitivo
+    Container.ContainerInputStream cis = res.getContainerInputStream( false );
+
+    int[] _f2 = cis.readIntArray();
+    return _f2;
+  }
+
+}

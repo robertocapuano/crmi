@@ -1,0 +1,33 @@
+package rio;
+
+import com.borland.primetime.util.Debug;
+
+import de.fub.bytecode.*;
+import de.fub.bytecode.classfile.*;
+import de.fub.bytecode.generic.*;
+
+public class SSGenerator
+{
+  protected String class_name;
+
+  private JavaClass java_class;
+
+  public SSGenerator( String ini_class_name ) throws ClassNotFoundException
+  {
+    class_name = ini_class_name;
+
+    java_class = Repository.lookupClass(class_name);
+    if (java_class==null)
+      throw new ClassNotFoundException( class_name + " not found." );
+  }
+
+  public SSGenerator( JavaClass j_cl )
+  {
+    java_class = j_cl;
+  }
+
+  public SSGenerator()
+  {
+  }
+
+}

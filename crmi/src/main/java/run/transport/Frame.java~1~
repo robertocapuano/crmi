@@ -1,0 +1,336 @@
+package rio.transport;
+
+import rio.Transportable;
+import rio.Sizeof;
+import rio.transport.Opcodes;
+
+
+
+/**
+ * Rappresenta la serializzazione di un oggetto
+ * Di piu' il frame e' usato per serializzare l'intera lista degli argomenti di una chiamata remota.
+ * Ha come campi privati:
+ * la reference_table: reference sullo stream -> oggetto in memoria, puo' essere un ArrayList
+ * la object_table: oggetto in memoria-> refererence sullo stream puo' essere una hashtable
+ * la hashtable dei nomi delle classi, alle
+ */
+
+public class Frame {
+
+  byte[] frame;
+  int size;
+
+  public Frame( int _size ) {
+    size = _size;
+    frame = new byte[size];
+  }
+
+
+  /**
+   * Ottiene un nuovo stream dal frame
+   *
+   */
+
+
+  public FrameInputStream getFrameInputStream( boolean have_objects )
+  {
+    return new FrameInputStream( have_objects );
+  }
+
+/**
+ * @name FrameInputStream
+ * @description Reppresenta un flusso di input dal frame
+ */
+
+  public class FrameInputStream
+  {
+
+    /**
+     * Associa oggetto (riferimento in memoria) --> handle sullo stream
+     */
+    ReferenceTable reference_table;
+
+    public FrameInputStream( boolean have_objects )
+    {
+      if (have_objects)
+	  reference_table = new ReferenceTable();
+    }
+
+
+
+      int readInt(  )
+      {
+	int res = frame[next_pos] + (frame[next_pos+1]<<8);
+	next_pos += Sizeof.INT;
+      }
+
+      void writeOpcode( int op )
+      {
+	writeInt( op );
+      }
+
+      int readOpcode( )
+      {
+	return readInt();
+      }
+
+      int nextRef( )
+      {
+	return next_ref++;
+      }
+
+      int readRef()
+      {
+	return readInt();
+      }
+
+      void writeRef( int ref )
+      {
+	writeInt( ref );
+      }
+
+      /**
+       * Serializza l'oggetto o
+       */
+
+      public void writeObject( Transportable o )
+      {
+	Integer ref = (Integer) object_table.get(o);
+	if (ref==null)
+	{
+	  writeOpcode( Opcodes.ISTANCE );
+	  object_table.put( o, nextRef() );
+	  append( o );
+	}
+	else
+	{
+	  writeOpcode( Opcodes.REFERENCE );
+	  writeRef( ref.intValue() );
+	}
+
+      }
+
+
+      /**
+       * Legge un oggetto dal frame e lo deseriarilizza
+       */
+      Transportable readObject( Transportable o )
+      {
+	Transportable istance;
+
+	// inizializza i campi di o
+
+	int op = readOpcode();
+
+	switch (op)
+	{
+	  case REFERENCE:
+	    int ref = readReference();
+	    // cerca il ref nell'hashtable
+	    istance = (Transportable) reference_table.get( new Integer(ref) );
+	    return istance;
+	    break;
+	  case ISTANCE:
+/**
+ * Se chiama il metodo read.Object necessariamente l'oggetto deve essere presente sullo stream.
+ *
+ */
+	    o.readObject( this );
+
+/**
+ * Marshall -> readObject -> readInt, readFloat, oggetto ? Frame.readObject
+ *
+ *
+ *
+ */
+	    reference_table.put( new Integer( nextRef() ), o );
+	    return o;
+	    break;
+	}
+
+      } // end readObject
+
+
+      /**
+       * effettua l'append di uno stream da un altro
+       *
+       */
+      void append( Transportable t )
+      {
+	t.writeObject( this );
+      }
+
+
+    /**
+     * Prossima posizione su cui operare
+     */
+    private int next_pos = 0;
+
+    /**
+     * Prossima riferimento libero: e' un progressivo
+     * 0 riservato per indicare l'assenza dell'oggetto
+     */
+    private int next_handle = 1;
+
+  } // end class FrameOutputStream
+
+   public FrameInputStream getFrameOutputStream( boolean have_objects )
+   {
+      return new FrameInputStream( have_objects );
+   }
+
+
+    public class FrameOutputStream
+    {
+      /**
+       * Prossima posizione su cui operare
+       */
+      int next_pos = 0;
+      /**
+       * stream in scrittura
+       */
+      boolean in_write;
+      /**
+       * Prossima riferimento libero: e' un progressivo
+       */
+       int next_ref = 1;
+
+      /**
+       * Associa oggetto (riferimento in memoria) --> riferimento sullo stream
+       */
+      Hashtable object_table;
+
+      /**
+       * Associa riferimento sullo stream --> oggetto
+       */
+      Hashtable reference_table;
+
+      public FrameOutputStream( boolean _in_write, boolean have_objects )
+      {
+	in_write = _in_write;
+
+	if (have_objects)
+	{
+	    reference_table = new Hashtable();
+	    object_table = new Hashtable();
+	}
+
+      }
+
+      void writeInt( int x )
+      {
+	next_pos += Sizeof.INT;
+      }
+
+    void writeInt( int x )
+    {
+      frame[ next_pos ] = (byte) (x>>24) & 0xff;
+      frame[ next_pos+1 ] =  (byte) (x>>16) & 0xff;
+      frame[ next_pos+2 ] = (byte) (x>>8) & 0xff;
+      frame[ next_pos+3 ] = (byte) x & 0xff;
+
+
+      next_pos += Sizeof.INT;
+
+    }
+
+      void writeOpcode( int op )
+      {
+	writeInt( op );
+      }
+
+      int readOpcode( )
+      {
+	return readInt();
+      }
+
+      void nextRef( )
+      {
+	return next_ref++;
+      }
+
+      void readRef()
+      {
+	return readInt();
+      }
+
+      void writeRef( int ref )
+      {
+	writeInt( ref );
+      }
+
+      /**
+       * Serializza l'oggetto o
+       */
+
+      public void writeObject( Transportable o )
+      {
+	Integer ref = (Integer) object_table.get(o);
+	if (ref==null)
+	{
+	  writeOpcode( Opcodes.ISTANCE );
+	  object_table.put( o, nextRef() );
+	  append( o );
+	}
+	else
+	{
+	  writeOpcode( Opcodes.REFERENCE );
+	  writeRef( ref.intValue() );
+	}
+
+      }
+
+
+      /**
+       * Legge un oggetto dal frame e lo deseriarilizza
+       */
+      Transportable readObject( Transportable o )
+      {
+	Transportable istance;
+
+	// inizializza i campi di o
+
+	int op = readOpcode();
+
+	switch (op)
+	{
+	  case REFERENCE:
+	    int ref = readReference();
+	    // cerca il ref nell'hashtable
+	    istance = (Transportable) reference_table.get( new Integer(ref) );
+	    return istance;
+	    break;
+	  case ISTANCE:
+/**
+ * Se chiama il metodo read.Object necessariamente l'oggetto deve essere presente sullo stream.
+ *
+ */
+	    o.readObject( this );
+
+/**
+ * Marshall -> readObject -> readInt, readFloat, oggetto ? Frame.readObject
+ *
+ *
+ *
+ */
+	    reference_table.put( new Integer( nextRef() ), o );
+	    return o;
+	    break;
+	}
+
+      } // end readObject
+
+
+      /**
+       * effettua l'append di uno stream da un altro
+       *
+       */
+      void append( Transportable t )
+      {
+	t.writeObject( this );
+      }
+
+
+  } // end class FrameInputStream
+
+} // end Frame

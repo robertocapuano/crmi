@@ -1,0 +1,248 @@
+package run.transport;
+
+import java.net.*;
+
+import org.omg.CORBA.IntHolder;
+
+/**
+ * Rappresenta un datagramma decodificato
+ *
+ * Formato di un datagramma UDP di dati
+ * (byte)CALL (int)session (int)totalnumber (int)packetnumber (byte)data[]
+ * 1            4             4                 4                []
+ *
+ * Formato di un datagramma UDP di controllo
+ *
+ * Inizio sessione
+ * (byte)INIT  (int)session (int)totalnumber (int)callgram_size (utf32)services_name (utf32)method_name
+ *
+ * Fine sessione
+ * (byte)DISC (int)session (int)totalnumber
+ *
+ * ACKI
+ * (byte)ACKI (int)session (int)totalnumber
+ *
+ * ACKD
+ * (byte)ACKD (int)session (int) totalnumber
+ *
+ * ACKn
+ * (byte)ACKN (int)session (int)totalnumber (int)packetnumber
+ *
+ */
+
+public class Packet
+{
+  // costanti
+  protected final static int START_OF_OPCODE = 0;
+  protected final static int START_OF_SESSION = 1;
+  protected final static int START_OF_TOTAL_NUMBER = 5;
+
+  // per il datagram dati
+  protected final static int START_OF_PACKET_NUMBER = 9;
+  protected final static int START_OF_DATA = 13;
+
+  // per il datagram init
+  protected final static int START_OF_CALLGRAM_SIZE = 9;
+  protected final static int START_OF_SERVICES_NAME = 13;
+
+
+  // dimensione dei datagram, non usati
+  protected final static int SIZE_OF_UDP_DATAGRAM_ETHERNET = 1500-26;
+  protected final static int SIZE_OF_UDP_DATAGRAM_MYRINET = 3752-26;
+
+  NetAddress remote_address;
+  NetAddress local_address;
+
+  byte opcode;
+  int session_id;
+  int total_number;
+  int packet_number = -1;
+  byte[] data;
+  int callgram_size = 0;
+  int data_size;
+
+  String services_name;
+  String method_name;
+
+  public Packet( NetAddress _local_address, DatagramPacket datagram )
+  {
+    byte[] frame = datagram.getData();
+
+    remote_address = readAddress( datagram );
+    local_address = _local_address;
+
+    opcode = readOpcode( frame );
+    session = readSessionId( frame );
+    total_number = readTotalNumber( frame );
+    switch (opcode)
+    {
+      case Opcodes.INIT:
+	callgram_size = readCallgramSize( frame );
+	IntHolder pos = new IntHolder( START_OF_SERVICES_NAME );
+	services_name = readUTF8( frame, pos );
+	method_name = readUTF8( frame, pos );
+	data_size = 0;
+	break;
+      case Opcodes.CALL:
+	packet_number = readPacketNumber( frame );
+	data_size = frame.length - START_OF_DATA;
+	data = new byte[ data_size ];
+	copyPacketDataToArray( frame, data, 0, data_size );
+	break;
+      case Opcodes.ACKN:
+	packet_number = readPacketNumber( frame );
+	break;
+      case Opcodes.DISC:
+      case Opcodes.ACKI:
+      case Opcodes.ACKD:
+	// non hanno campi specifici
+	break;
+    }
+  }
+
+  /**
+   * Convesione InetAddress -> IPAddress
+   */
+  protected final static IPAddress readAddress( DatagramPacket datagram )
+  {
+    byte[] address;
+    int port;
+
+    InetAddress inet_address = datagram.getAddress();
+    port = datagram.getPort();
+    IPAddress remote_address = new IPAddress( inet_address.getAddress(), datagram.getPort() );
+    return remote_address;
+  }
+
+  /**
+   * Analizza un datagramma: opcode
+   */
+  protected static byte readOpcode( byte[] packet )
+  {
+    return packet[0];
+  }
+
+  /**
+   * Analizza un datagramma: session
+   */
+  protected static int readSessionId( byte[] packet )
+  {
+    int session = readInt(packet, START_OF_SESSION );
+    return session;
+  }
+
+  /**
+   * Analizza un datagramma: callgram size
+   */
+  protected static int readCallgramSize( byte[] packet )
+  {
+    int size = readInt(packet, START_OF_CALLGRAM_SIZE );
+    return size;
+  }
+
+  /**
+   * Analizza un datagramma: total number
+   */
+  protected static int readTotalNumber( byte[] packet )
+  {
+    int total_number = readInt( packet, START_OF_TOTAL_NUMBER );
+    return total_number;
+  }
+
+  /**
+   * Analizza un datagramma: packet number
+   */
+  protected static int readPacketNumber( byte[] packet )
+  {
+    int number = readInt( packet, START_OF_PACKET_NUMBER );
+    return number;
+  }
+
+  /**
+   * Analizza un datagram: sezione dati
+   */
+  protected static byte[] copyPacketDataToArray( byte[] from_packet, byte[] to_array, int dest_index, int len )
+  {
+    System.arraycopy( from_packet, START_OF_DATA, to_array, dest_index, len);
+  }
+
+  final protected static int readInt( byte[] frame, int pos  )
+  {
+    int res = frame[pos];
+    res <<= 8;
+    res += frame[ pos+1 ];
+    res <<= 8;
+    res += frame[ pos+2 ];
+    res <<= 8;
+    res += frame[ pos+3 ];
+
+    return res;
+  }
+
+  final protected static String readUTF8( byte[] frame, IntHolder pos );
+  {
+    // stub
+
+    int i =pos.value;
+
+    pos.value = i+1;
+    return "";
+  }
+
+  final byte getOpcode()
+  {
+    return opcode;
+  }
+
+  final int getSessionId()
+  {
+    return session_id;
+  }
+
+  final int getTotalNumber()
+  {
+    return total_number;
+  }
+
+  final int getPacketNumber()
+  {
+    return packet_number;
+  }
+
+  final int getData()
+  {
+    return data;
+  }
+
+  final int getCallgramSize()
+  {
+    return callgram_size;
+  }
+
+  final String getServicesName()
+  {
+    return services_name;
+  }
+
+  final String getMethodName()
+  {
+    return method_name;
+  }
+
+  final NetAddress getRemoteAddress()
+  {
+    return remote_address;
+  }
+
+  final NetAddress getLocalAddress()
+  {
+    return local_address;
+  }
+
+  final int getDataSize()
+  {
+    return data_size;
+  }
+
+
+}

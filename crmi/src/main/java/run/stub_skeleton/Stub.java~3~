@@ -1,0 +1,42 @@
+package run.stub_skeleton;
+
+/**
+ *
+ * classe generata
+ * da un registry intelligente (centralizzato) <---
+ */
+
+import run.reference.RemoteServicessReference;
+
+public abstract class Stub
+{
+/**
+ * Indirizzo del server remoto.
+ */
+  protected RemoteServicesReference remote_services_reference;
+
+  public Stub( RemoteServicesReference ini_reference )
+  {
+    remote_services_reference = ini_reference;
+  }
+
+  public static String getClassname( String services_classname )
+  {
+    return services_classname + "_Stub";
+  }
+
+  public String getClassname(  )
+  {
+    return getClass().getName();
+  }
+
+
+/*
+  RemoteReference getRemoteReference()
+  {
+    return remote_reference;
+  }
+*/
+
+}
+

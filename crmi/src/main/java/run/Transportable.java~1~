@@ -1,0 +1,42 @@
+package run;
+
+import run.serialization.SerializationException;
+
+import run.serialization.Container;
+import run.serialization.SerializationException;
+
+/**
+ * Identifica una classe come "trasportabile" (serializzabile) sullo stream.
+ * Tutto le classi devono definire questi metodi oltre che un campo long SUID
+ */
+
+public interface Transportable
+{
+//  static long SUID;
+
+// Bisogna far generare in maniera automatica questi due metodi
+// Serializza l'oggetto
+  public void writeObject( Container.ContainerOutputStream cos ) throws SerializationException;
+// inizializza l'istanza dell'oggetto
+  public void readObject( Container.ContainerInputStream cis ) throws SerializationException;
+
+// ...insieme a questo, dipende dal tipo effettivo dell'oggetto.
+//  public int sizeOf(); // dimensione dell'oggetto.
+
+// Stream unique identifier
+//  public long getSUID();
+
+
+/*
+  public final long SUID;
+  public final long getSUID()
+  {
+    // il suid sara' calcolata al tempo della compilazione
+    long suid = java.io.ObjectStreamClass.lookup( getClass() ).getSerialVersionUID();
+  }
+*/
+
+// idea 1: un registry intelligente (centralizzato)
+// idea 2: un class loader <--
+// idea 3: un post compilatore (rmic-like)
+}

@@ -1,0 +1,24 @@
+package clio;
+
+import java.util.Vector;
+
+import com.borland.primetime.util.Debug;
+
+import de.fub.bytecode.*;
+import de.fub.bytecode.classfile.*;
+import de.fub.bytecode.generic.*;
+
+import run.stub_skeleton.*;
+
+/**
+ * Genera le classi Stub/Skeleton per il servizio
+ * La Major/Minor version della classe generata e' uguale a quella della classe del servizio
+ */
+
+final class SkeletonGenerator
+{
+  static JavaClass generateSkeletonClass( JavaClass service_jcl )
+  {
+    return Repository.lookupClass( service_jcl.getClassName() + Skeleton.CLASSNAME_SUFFIX );
+  }
+}

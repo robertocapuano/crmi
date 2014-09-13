@@ -1,0 +1,399 @@
+package run.session;
+
+import java.net.DatagramPacket;
+import java.util.*;
+
+import run.transport.*;
+
+/**
+ * INIT -> ACKI
+ * ACKI -> DATA
+ * DISC -> ACKD
+ * ACKD -> NOP
+ * RN -> DATA/DISC
+ * DATA -> RN
+ */
+
+public class SessionSend extends Session
+{
+  /**
+   * Dimensione della finestra di invio.
+   */
+  protected int window_size;
+
+  /**
+   * Pool di packet per la finestra
+   */
+
+  protected PacketPool window_pool;
+
+  /**
+   * Ultimo request number ricevuto
+   */
+  protected int rn;
+
+  /**
+   * indici della window
+   */
+  protected int sn_min;
+  protected int sn_max;
+
+
+  // metodi
+  SessionSend( ThreadGroup tgroup, String session_name )
+  {
+    super( tgroup, session_name );
+    // in idle
+    status = Opcodes.ACKD;
+    // avvia
+    start();
+  }
+
+  /**
+   * Crea una nuova sessione per l'invio di un callgram
+   */
+  void initSession( int _session_id, Transport _transport, NetAddress _remote_address, CallgramListener _listener, int _window_size  )
+  {
+    super.init( _session_id, _transport, _remote_address, _listener );
+
+    window_size = _window_size;
+
+//    if ( window_pool==null || window_size!=window_pool.getPoolSize() || getPacketSize()!=window_pool.getPacketSize() )
+    window_pool = new PacketPool( getPacketSize(), window_size );
+  }
+
+  /**
+   * Invio del callgram
+   */
+  synchronized void send( Callgram _callgram )
+  {
+    callgram = _callgram;
+    callgram.setSession( this );
+
+//    RemoteServicesReference remote_ref = callgram.getRemoteServicesReference();
+//    NetAddress _remote_address = remote_ref.getDestinationAddress();
+//    setRemoteAddress( _remote_address );
+
+    return_value = _callgram.getReturnValue();
+
+    setListener( _callgram.getListener() );
+
+    callgram_buffer = callgram.getContainer().getFrame().toArray();
+    callgram_size = callgram_buffer.length;
+
+    int max_data_size = getPacketSize() - Packet.SIZE_OF_CALL_HEADER;
+    // approssimato all'intero superiore
+    packet_total_number = (callgram_size + max_data_size-1) / max_data_size;
+
+    // sequence number azzerato
+    rn = 0;
+    sn_min = 0;
+    sn_max = set_sn_max();
+
+    // invio del packet di inizializzazione in base al tipo di connessione
+    switch (callgram.operation)
+    {
+      case Callgram.CALL:
+        Packet init_packet = init( window_pool.get() );
+        transport.send( init_packet );
+	break;
+      case Callgram.REMOTE_EXCEPTION:
+      case Callgram.RETURN:
+	Packet ret_packet = ret( window_pool.get() );
+	transport.send( ret_packet );
+	break;
+      default:
+        Debug.print("callgram.operation errato");
+	break;
+    }
+
+    // Avvio del thread per la gestione del protocollo
+    notifyAll();
+  }
+
+  protected int set_sn_max()
+  {
+    return sn_max = Math.min( packet_total_number, sn_min+window_size );
+  }
+
+  /**
+   * Ricezione di un packet.
+   */
+  synchronized Packet receive( Packet in_packet )
+  {
+    switch ( in_packet.getOpcode() )
+    {
+      case Opcodes.INIT:
+	Debug.print("Errore: arrivato un packet INIT ad una SessionSend");
+	return nop_packet;
+      case Opcodes.ACKI:
+	Debug.assert( status == Opcodes.INIT );
+	Packet acki_packet = acki( in_packet );
+	return send_window( acki_packet );
+      case Opcodes.DISC:
+	Debug.print("Errore: arrivato un packet DISC ad una SessionSend");
+	return nop_packet;
+      case Opcodes.ACKD:
+	Debug.assert( status==Opcodes.DISC );
+	Packet ackd_packet = ackd( in_packet );
+	notifyListener(); // pusher per una CALL, CallThread per un RETURN
+	return ackd_packet;
+      case Opcodes.DATA:
+	Debug.print("Errore: arrivato un packet DATA ad una SessionSend");
+	return nop_packet;
+      case Opcodes.RN:
+	Debug.assert( status==Opcodes.DATA || status==Opcodes.ACKI || status==Opcodes.ACKR || status==Opcodes.RN );
+	return rn( in_packet );
+      case Opcodes.RET:
+	Debug.print( "Pacchetto RET alla SessionSend" );
+	return nop_packet;
+      case Opcodes.ACKR:
+	Debug.assert( status==Opcodes.RET );
+	Packet ackr_packet = ackr( in_packet );
+	return send_window( ackr_packet );
+      default:
+	Debug.print("Opcode sconosciuto");
+	return nop_packet;
+    } // end switch
+  }
+
+  /**
+   *      Gestione della sessione
+   */
+
+  public void run()
+  {
+
+    int old_sn_min;
+
+    while (true)
+    {
+      synchronized (this)
+      {
+	old_sn_min = sn_min;
+
+	try
+	{
+	  if (status==Opcodes.ACKD)
+	    wait();
+	  else
+	    wait( TIME_OUT );
+	}
+	catch (InterruptedException ie ) { Debug.print( "SessionSend: " + ie ); }
+
+	// dopo il time_out viene rispedito l'ultimo pacchetto di controllo
+	switch (status)
+	{
+	  case Opcodes.INIT:
+	    if ( window_pool.size()==window_size )
+	    {
+	      transport.send( init( window_pool.get() ) );
+	    }
+	    else
+	    {
+	      // NOP
+	    }
+	    break;
+	  case Opcodes.ACKI:
+	    Debug.print( "status inconsistente" );
+	    break;
+	  case Opcodes.RET:
+	    if ( window_pool.size()==window_size )
+	    {
+	      transport.send( ret( window_pool.get() ) );
+	    }
+	    else
+	    {
+	      // NOP
+	    }
+	    break;
+	  case Opcodes.ACKR:
+	    Debug.print( "status inconsistente" );
+	    break;
+	  case Opcodes.DISC:
+	    if ( window_pool.size()==window_size /*one_packet.isFree()*/ )
+	    {
+	      transport.send( disc( window_pool.get() ) );
+	    }
+	    else
+	    {
+	      // NOP
+	    }
+	    break;
+	  case Opcodes.RN:
+	  case Opcodes.DATA:
+	    // passo 5 dell'algoritmo
+	    // se sn_min<sn_max e nell'ultimo periodo sn_min e' rimasto invariato e non abbiamo pacchetti in trasmissione
+	    if (sn_min<sn_max && old_sn_min==sn_min && window_pool.size()==window_size )
+	    {
+	      transport.send( data( window_pool.get(), sn_min ) );
+	    }
+	    else
+	    if ( sn_min<sn_max && window_pool.size()==window_size )
+	    {
+	      int sn = Random.rand( sn_min, sn_max );
+	      transport.send( data( window_pool.get(), sn ) );
+	    }
+	    break;
+	  case Opcodes.ACKD:
+	    // idle
+	    break;
+	  default:
+	    Debug.print( "Opcode non gestito" );
+	    break;
+	} // end switch
+
+
+      } // end synchronized
+
+    } // end forever
+
+
+  }
+
+  Packet send_window( Packet last_packet )
+  {
+    int last = Math.min( sn_max-1, sn_min + window_pool.size() );
+
+    for ( int i=sn_min; i<last; ++i )
+    {
+      transport.send( data( window_pool.get(), i ) );
+    }
+
+    return data( last_packet, last );
+  }
+
+  void send_window( )
+  {
+    int last = Math.min( sn_max, sn_min + window_pool.size() );
+
+    for ( int i=sn_min; i<last; ++i )
+    {
+      transport.send( data( window_pool.get(), i ) );
+    }
+  }
+
+  /**
+   * Invio di Init della connessione
+   */
+  protected Packet init( Packet init_packet )
+  {
+    status = Opcodes.INIT;
+    String services_name = callgram.getRemoteServicesReference();
+    String method_signature = callgram.getRemoteMethodSignature();
+    init_packet.setInit( remote_address, session_id, total_number, callgram_size, services_name, method_signature );
+    return init_packet;
+  }
+
+  /**
+   * Riconoscimento di init
+   */
+  protected Packet acki( Packet acki_packet )
+  {
+    Debug.assert( status == Opcodes.INIT );
+
+    status = Opcodes.ACKI;
+    return acki_packet;
+  }
+
+  /**
+   * Invio di Ret della connessione
+   */
+
+  protected Packet ret( Packet ret_packet )
+  {
+    status = Opcodes.RET;
+    ret_packet.setRet( remote_address, session_id, total_number, callgram_size, return_value );
+    return ret_packet;
+  }
+
+  /**
+   * Riconoscimento di init
+   */
+  protected Packet ackr( Packet ackr_packet )
+  {
+    Debug.assert( status == Opcodes.RET );
+
+    status = Opcodes.ACKR;
+    return ackr_packet;
+  }
+
+  /**
+   * Invio di DISC
+   */
+  protected Packet disc( Packet disc_packet )
+  {
+    // soso stati spediti tutti i pacchetti
+    Debug.assert( sn_max==packet_total_number );
+
+    status = Opcodes.DISC;
+    disc_packet.setDisc( remote_address, session_id );
+    return disc_packet;
+  }
+
+  /**
+   *  Sconnessione: ACKD
+   */
+  protected Packet ackd( Packet ackd_packet )
+  {
+    // siamo in fase di disconnnessione?
+    Debug.assert( status==Opcodes.DISC );
+
+    status = Opcdes.ACKD;
+    return nop_packet;
+  }
+
+  /**
+   * Data
+   */
+  protected Packet data( Packet data_packet, int n )
+  {
+    Debug.assert( n<packet_total_number );
+
+    status = Opcodes.DATA;
+    int max_data_size = data_packet.getMaxDataSize();
+    data_packet.setData( remote_address, session_id, total_packet_number, n, callgram_buffer, n*max_data_size, max_data_size );
+
+    return data_packet;
+  }
+
+  /**
+   * RN n
+   */
+
+  protected Packet rn( Packet rn_packet )
+  {
+    int last_rn = rn_packet.getRN();
+
+    if (last_rn<rn)
+      return nop_packet;
+    else
+    {
+      status = Opcodes.RN;
+
+      rn = last_rn;
+
+      if (rn<sn_min)
+      {
+	// rn scartato
+	return nop_packet;
+      }
+      else
+      {
+	if (rn>=packet_total_number)
+	  // **** Il peer ha ricevuto tutti i pacchetti
+	  // **** Unico punto di disconnessione.
+	  return disc( rn_packet );
+	else
+	{
+	  sn_min = rn;
+	  set_sn_max();
+
+	  return send_window( rn_packet );
+	}
+      }
+    }
+  } // end rn()
+
+}
+

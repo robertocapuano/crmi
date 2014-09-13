@@ -1,0 +1,33 @@
+package run.stub_skeleton;
+
+/**
+ *
+ * classe generata
+ * da un registry intelligente (centralizzato) <---
+ */
+
+import run.application.*;
+import run.serialization.Container;
+import run.reference.RemoteReference;
+
+public abstract class Stub
+{
+/**
+ * Indirizzo del server remoto.
+ */
+  protected RemoteServicesReference remote_services_reference;
+
+  public Stub( RemoteServicesReference ini_reference )
+  {
+    remote_services_reference = ini_reference;
+  }
+
+/*
+  RemoteReference getRemoteReference()
+  {
+    return remote_reference;
+  }
+*/
+
+}
+

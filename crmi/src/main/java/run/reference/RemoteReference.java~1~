@@ -1,0 +1,46 @@
+package rio.reference;
+
+/**
+ * Rappresenta un riferimento (indirizzo) di un oggetto remoto.
+ *
+ */
+import rio.serialization.Container;
+
+public class RemoteReference {
+
+  /**
+   * host
+   */
+  private network_address net_address;
+
+  /**
+   * Servizio (oggetto)
+   */
+  private String service_name;
+
+  /**
+   * Methodo del servizio
+   */
+  private String method_name;
+
+  public RemoteReference() {
+  }
+
+  public Container call( Container arguments_packed )
+  {
+    Container res = new Container(0);
+    return res;
+  }
+
+  public final String getMethodName()
+  {
+    return method_name;
+  }
+
+  public final String getServiceName()
+  {
+    return service_name;
+  }
+
+
+}

@@ -1,0 +1,288 @@
+package clio;
+
+import java.util.*;
+import java.net.URL;
+import java.io.File;
+
+import de.fub.bytecode.*;
+import de.fub.bytecode.classfile.*;
+
+import com.borland.primetime.util.Debug;
+
+
+/**
+ * ClusterClassLoader contiene i metodi per la condivisione della classi sul Cluster
+ *
+ * Delegation Model
+ * 1) System ClassLoader cerca la classe in rt.jar
+ * 2) ExtClassLoader cerca la classe "modificata" in java.ext.dirs
+ * 3) AppClassLoader cerca la classe
+ *
+ * ClassLoader
+ * loadClass implementa il delegation model, si effettua l'overiding solo se vi vuole elinare il delgation tree
+ * findClass e' il metodo da "overridare" ufficialmente, chiamato da loadClass() dopo che ha effettuato il delegation tree.
+ *
+ *
+ * 1) ClusterClassLoader estende URLClassLoader con gli URL delle directory del CLASSPATH (java.class.path)
+ * 2) Agli URL aggiunge quello del repository delle classi dell'utente.
+ * -- AppClassLoader hiding:
+ * 3) ClusterClassLoader.loadClass() interrompe il delegation tree e carica le applicazioni dal CLASSPATH
+ *
+ * -- AppClassLoader removing:
+ * 3) * ClusterClassLoader viene creato con indicativo di parent pari al ExtClassLoader, in questo modo le classi dell'applicazione
+ *    saranno caricate con il nostro ClusterClassLoader
+ *
+ *
+ */
+
+public class ClusterClassLoader extends ClassLoader
+{
+  /**
+   * Tabella delle classi caricate
+   */
+  private final Map class_repository = new HashMap();
+  /**
+   * Istanza del ClusterClassLoader
+   */
+  private final static ClusterClassLoader cluster_class_loader = new ClusterClassLoader( );
+
+  /**
+   * Tipo Transportable
+   */
+  private final static JavaClass transportable_jclass = Repository.lookupClassFile("run.Transportable");
+
+  /**
+   * Tipo FastTransportable
+   */
+  private final static JavaClass fasttransportable_jclass = Repository.lookupClassFile("run.FastTransportable");
+
+  /**
+   * Tipo Services
+   */
+  private final static JavaClass services_jclass = Repository.lookupClassFile("run.Services");
+
+  /**
+   * Tipo Stub
+   */
+  private final static JavaClass stub_jclass = Repository.lookupClassFile( "run.stub_skeleton.Stub" );
+
+  /**
+   * Tipo Skeleton
+   */
+  private final static JavaClass skeleton_jclass = Repository.lookupClassFile( "run.stub_skeleton.Skeleton" );
+
+  /**
+   * URL del repository delle classi dell'utente
+   */
+  private static URL class_repository_url;
+
+  // Iniziliazzatore della tabella  delle classi
+  static
+  {
+    Class transportable_class = javaClassToClass( transportable_jclass );
+    class_repository.add( transportable_class.getClassName(), transportable_class );
+
+    Class fasttransportable_class = javaClassToClass( fasttransportable_jclass );
+    class_repository.add( fasttransportable_class.getClassName(), fasttransportable_class );
+
+    Class services_class = javaClassToClass( services_jclass );
+    class_repository.add( services_class.getClassName(), services_class );
+
+    String home_dir = System.getProperty("user.home") ;
+    String default_repository_url = "file:" + home_dir +  "/repository/" ;
+    String repository_url = Utility.getStringProperty( "clio.repository.path", default_repository_url );
+
+    class_repository_url = new URL( repository_url );
+  }
+
+
+  /**
+   * Ritorna l'unica istanza del ClusterClassLoader
+   */
+  public final static ClusterClassLoader getClusterClassLoader()
+  {
+    return cluster_class_loader;
+  }
+
+  /**
+   */
+  public ClusterClassLoader( )
+  {
+  }
+
+  /**
+   * 1. Cerca nel repository interno al class loader
+   *
+   */
+  public Class findClass(String class_name) throws ClassNotFoundException
+  {
+    JavaClass j_cl;
+    Class cl;
+
+    // 1. Cerca nel repository interno al class loader
+    cl = (Class) class_repository.get( class_name );
+
+    if ( cl == null)
+    {
+      // 2. Cerca nel repository dell'utente
+      j_cl = loadFromClioRepository( class_name );
+      if ( j_cl == null )
+      {
+	// 3. Cerca nel bootclasspath/extclasspath/appclasspath
+	{
+	  j_cl = Repository.lookupClass( class_name );
+
+	  if (j_cl == null)
+	  {
+	    // Verifichiamo se e' uno classe generabile: stub/skeleton
+	    if ( class_name.endsWith( run.Stub.CLASSNAME_SUFFIX) )
+	    {
+	      String service_name = class_name.lastIndexOf( run.Stub.STUB_SUFFIX );
+	      SSGenerator ssg = new SSGenerator(
+	    if
+	    else
+	    {
+	      // 4. Ci arrendiamo...
+	      throw new ClassNotFoundException( class_name );
+	    }
+	  }
+	}
+      }
+      // Abbiamo trovata la classe, interessa BCE?
+      if (j_cl.instanceOf(
+
+
+
+    } // end if (cl==null)
+    else
+      return cl;
+
+
+
+	  // check update
+	  if ( !isUpdate( j_cl ) )
+	    j_cl = update( j_cl );
+
+
+
+      else
+      {
+	if (j_cl.instanceOf( FastTran
+	try
+	{
+
+
+
+	  InputStream is = cpcf.getInputStream();
+	  int c_len = (int) cpcf.getSize();
+	  byte c_buffer[] = new byte[c_len];
+	  // lettura dal file system
+	  is.read( c_buffer, 0, c_len );
+
+	  // Produce la Class
+//	  cl = defineClass( name, c_buffer, 0, c_len );
+
+	  class_repository.put( name, cl );
+
+	  Class[] c_interfaces = cl.getInterfaces();
+
+	  int i;
+
+	  for ( i=0; i<c_interfaces.length && ( c_interfaces[i] != Transportable.class ) ; ++i );
+
+	  if ( i<c_interfaces.length )
+	  {
+	    // la classe implementa Transportable
+
+	    // Produce la JavaClass
+	    ByteArrayInputStream bais = new ByteArrayInputStream( c_buffer, 0, c_len );
+	    ClassParser c_parser = new ClassParser( bais, name );
+	    j_cl = c_parser.parse();
+
+	    RWSGenerator rws = new RWSGenerator( j_cl );
+	    rws.generate();
+	  }
+	}
+	catch (IOException io_exception)
+	{
+	  throw new ClassNotFoundException( io_exception.getMessage() );
+	}
+
+
+      }
+
+
+
+
+
+    URL url = getResource(class_name+".class");
+
+    System.out.println( "class_name: " + class_name );
+
+    if (url!=null)
+      System.out.println( "** url: " + url.toString() );
+
+    Class class_type = super.findClass( class_name );
+/*
+      Class skeleton_class;
+      // si generano entrame le classi per stub/skeleton
+      SSGenerator ssg = new SSGenerator( services_classname );
+
+      stub_class = ssg.generateStubClass();
+      skeleton_class = ssg.generateSkeletonClass();
+      ClusterClassLoader.add( stub_class );
+      ClusterClassLoader.add( skeleton_class );
+
+
+      Class stub_class;
+      // si generano entrame le classi per stub/skeleton
+      SSGenerator ssg = new SSGenerator( services_classname );
+
+      stub_class = ssg.generateStubClass();
+      skeleton_class = ssg.generateSkeletonClass();
+      ClusterClassLoader.add( skeleton_class );
+      ClusterClassLoader.add( stub_class );
+
+
+
+
+
+*/
+
+    return class_type;
+//    byte[] b = loadClassData(class_name);
+//    return defineClass(class_name, b, 0, b.length);
+//    System.out.println("findclass loading: " + name);
+  }
+
+
+  private byte[] loadClassData(String name)
+  {
+    return new byte[0];
+  }
+
+  private JavaClass loadFromClioRepository()
+  {
+    // Produce la JavaClass
+
+    ByteArrayInputStream bais = new ByteArrayInputStream( c_buffer, 0, c_len );
+    ClassParser c_parser = new ClassParser( bais, name );
+    j_cl = c_parser.parse();
+  }
+
+  private Class javaClassToClass()
+  {
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    DataOutputStream dos = new DataOutputStream( baos );
+
+    j_cl.dump( dos );
+
+    byte[] class_dump = baos.toByteArray();
+
+    Class d_cl = defineClass( name, class_dump, 0, class_dump.length );
+
+    return d_cl;
+  }
+
+
+}

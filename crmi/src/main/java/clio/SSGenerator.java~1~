@@ -1,0 +1,43 @@
+package clio;
+
+import com.borland.primetime.util.Debug;
+
+import de.fub.bytecode.*;
+import de.fub.bytecode.classfile.*;
+import de.fub.bytecode.generic.*;
+
+import run.stub_skeleton.*;
+
+/**
+ * Genera le classi Stub/Skeleton per il servizo
+ */
+
+public final class SSGenerator
+{
+  private String services_classname;
+  private JavaClass services_jclass;
+
+  public SSGenerator( String _services_classname )
+  {
+    services_classname = _services_classname;
+
+    services_jclass = Repository.lookupClass( services_classname );
+    if (services_jclass==null)
+    {
+      th
+    }
+  }
+
+  public SSGenerator( JavaClass _services_jclass )
+  {
+    services_jclass = _services_jclass;
+  }
+
+  JavaClass generateStubClass()
+  {
+  }
+
+  JavaClass generateSkeletonClass()
+  {
+  }
+}

@@ -1,0 +1,157 @@
+package run.transport;
+
+import java.net.InetAddress;
+import java.util.*;
+
+import com.borland.primetime.util.Debug;
+
+import run.exec.*;
+import run.Utility;
+
+public class TransportTable
+{
+
+  /**
+   * Lista dei transports disponibili
+   */
+  private static List transport_list = new ArrayList();
+
+  /**
+   * Inizializza la lista dei transport interrogando la macchina nativa sul tipo di reti disponibili
+   */
+  static
+  {
+    // servirebbe un metodo nativo per leggere l'MTU dell'interfaccia!
+    try
+    {
+/*
+      int loopback_port = Utility.getIntProperty("run.transport.udptransport.loopback.port", UDPTransport.LOOPBACK_PORT );
+      String loopback_address = Utility.getStringProperty("run.transport.udptransport.ethernet.loopback", "127.0.0.1" );
+      IPAddress loopback_ip_address = new IPAddress( InetAddress.getByName( loopback_address ), loopback_port, new byte[] { (byte) 255, 0,0,0 } );
+      int loopback_window_size = Utility.getIntProperty( "run.transport.udptransport.loopback.windowsize", UDPTransport.LOOPBACK_WINDOW_SIZE );
+      Transport loopback_transport = new UDPTransport( loopback_ip_address, UDPTransport.ETHERNET_PACKET_SIZE, loopback_window_size );
+      addTransport( loopback_transport );
+*/
+      int ethernet_port = Utility.getIntProperty("run.transport.udptransport.ethernet.port", UDPTransport.ETHERNET_PORT );
+      String ethernet_address = Utility.getStringProperty("run.transport.udptransport.ethernet.address", "10.0.2.1" );
+      IPAddress ethernet_ip_address = new IPAddress( InetAddress.getByName( ethernet_address ), ethernet_port, new byte[] { (byte) 255, (byte) 255, (byte) 255,0 } );
+      int ethernet_window_size = Utility.getIntProperty( "run.transport.udptransport.ethernet.windowsize", UDPTransport.ETHERNET_WINDOW_SIZE );
+      Transport ethernet_transport = new UDPTransport( ethernet_ip_address, UDPTransport.ETHERNET_PACKET_SIZE, ethernet_window_size );
+      addTransport( ethernet_transport );
+
+      int myrinet_port = Utility.getIntProperty("run.transport.udptransport.myrinet.port", UDPTransport.MYRINET_PORT );
+      String myrinet_address = Utility.getStringProperty("run.transport.udptransport.myrinet.address", "10.0.4.1" );
+      IPAddress myrinet_ip_address = new IPAddress( InetAddress.getByName( myrinet_address ), myrinet_port, new byte[] { (byte) 255, (byte) 255, (byte) 255,0 } );
+      int myrinet_window_size = Utility.getIntProperty( "run.transport.udptransport.myrinet.windowsize", UDPTransport.MYRINET_WINDOW_SIZE );
+      Transport myrinet_transport = new UDPTransport( myrinet_ip_address, UDPTransport.MYRINET_PACKET_SIZE, myrinet_window_size );
+      addTransport( myrinet_transport);
+    }
+    catch (Exception exception)
+    { Debug.print( exception.toString() ); }
+  }
+
+  /**
+   * Restituisce una istanza di trasporto per un tipo di rete.
+   * @param type tipo di trasporto
+   */
+  public static Transport getTransport( NetAddress remote_address ) throws TransportException
+  {
+    Iterator i;
+
+    for ( i = transport_list.iterator(); i.hasNext(); )
+    {
+      Transport t = (Transport) i.next();
+      NetAddress local_address = t.getLocalAddress();
+
+      if ( local_address.isReachable( remote_address ) )
+	return t;
+    }
+
+    throw new TransportException( "Transport: " + remote_address + " is unreachable" );
+  }
+
+  /**
+   * Metodo di debug
+   */
+  public final static Transport getTransport( int index )
+  {
+    return (Transport) transport_list.get(index);
+  }
+
+  /**
+   * Restituisce una istanza di trasporto per un tipo di rete.
+   * @param type tipo di trasporto
+   */
+/*
+  public static Transport getTransport( byte type ) throws TransportException
+  {
+    Iterator i;
+
+    for ( i = transport_list.iterator(); i.hasNext(); )
+    {
+      Transport t = (Transport) i.next();
+      if ( t.getType() == type )
+	return t;
+    }
+
+    throw new TransportException( "Transport: " + type + " not found" );
+  }
+*/
+
+  /**
+   * Aggiunge il transport alla lista
+   */
+  protected static void addTransport( Transport t )
+  {
+    transport_list.add( t );
+  }
+
+  /**
+   * Restituisce la lista dei transport
+   */
+  protected static Transport[] getTransportList()
+  {
+    // forma suggerita dall'API per creare un oggetto Transport[] invece di Object[]
+    return (Transport[]) transport_list.toArray( new Transport[0] );
+  }
+
+  /**
+   * Restituisce l'indirizzo di rete dell'interfaccia che permette di raggiungere remote_address
+   */
+  public final static NetAddress routeToHost( NetAddress remote_address ) throws TransportException
+  {
+    Transport transport = getTransport( remote_address );
+
+    return transport.getLocalAddress();
+  }
+
+  /**
+   * Main: effettua l'apha test dei Trasport Istanziati
+   * Sintassi: java TransportTable.Main (client/server) 127.0.0.1
+  public static void main( String[] args )
+  {
+    Transport[] transport_list = getTransportList();
+//    java.net.InetAddress inet_address = java.net.InetAddress.getByName( args[1]  );
+
+//    IPAddress ip_address = new IPAddress(
+    if ( args[0].equalsIgnoreCase("client") )
+    {
+      for ( int i=0; i<transport_list.length; ++i )
+      {
+        PacketOne packet = new PacketOne( transport_list[i].getPacketSize() );
+	packet.setInit( transport_list[i].getAddress(), 0, 10, 0, "", "" );
+	packet
+
+
+
+	transport_list[i].se
+    }
+    else
+    if ( args[0].equalsIgnoreCase("server") )
+    {
+    }
+    return;
+  }
+   */
+
+}

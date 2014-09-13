@@ -1,0 +1,32 @@
+package run.reference;
+
+import java.util.*;
+
+import run.stub_skeleton.*;
+
+/**
+ * Contiene i RemoteReference associati ai servizi locali.
+ * RemoteServicesReference -> LocalServicesReference
+ * L'implementazione attuale usa una HastMap con chiave RemoteServicesReference.services_name
+ */
+
+public class ServicesTable {
+/**
+ * tabella dei servizi.
+ */
+  private static Map service_table = new HashMap();
+
+  public ServicesTable() {
+//    service_table = new HashMap();
+  }
+
+  public static LocalServicesReference get( RemoteServicesReference remote )
+  {
+    return (LocalServicesReference) service_table.get( remote.getServicesName() );
+  }
+
+  public static void put( RemoteServicesReference remote, LocalServicesReference local )
+  {
+    service_table.put( remote.getServicesName(), local );
+  }
+}

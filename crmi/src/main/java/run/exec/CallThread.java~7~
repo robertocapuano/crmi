@@ -1,0 +1,167 @@
+package run.exec;
+
+import java.lang.reflect.*;
+
+import com.borland.primetime.util.Debug;
+
+import run.*;
+import run.stub_skeleton.*;
+import run.transport.Callgram;
+import run.transport.Opcodes;
+import run.reference.*;
+import run.serialization.Container;
+import run.session.Callgram;
+
+import rio.registry.Registry;
+
+public class CallThread extends Thread implements CallgramListener
+{
+/**
+ * Counter dei threads creati
+ */
+  private static int counter = 0;
+/**
+ * Pool a cui appartiene il thread
+ */
+  CallThreadPool thread_pool;
+
+  /**
+   * Dati della chiamata
+   */
+  private Callgram callgram;
+
+  CallThread( ThreadGroup tg, ThreadPool tp )
+  {
+    super( tg, "CallThread: " + counter++ );
+
+    callgram = null;
+    thread_pool = tp;
+    start();
+  }
+
+  /**
+   * metodo chiamato dalla SessionReceive/SessionSend
+   */
+  public void execCall( Callgram _callgram )
+  {
+    // operazione
+    switch (_callgram.getOperation() )
+    {
+      // chiamata da SessionReceive
+      case Callgram.CALL:
+	// Setta i dati
+	callgram = _callgram;
+	// sveglia il thread che svolgera' l'esecuzione in un thread separato
+	this.notifyAll();
+	// restituisce il thread al Dispatcher
+	break;
+      // Chiamata da SessionSend
+      case Callgram.RETURN:
+	// ritorno della chiamata
+	// restituisce il thread al pool
+	thread_pool.put( this );
+	break;
+      // Chiamata da SessionSend
+      case Callgram.REMOTE_EXCEPTION:
+	// la spedizione del valore di ritono non e' andata a buon fine
+	// restituisce il thread al pool
+	thread_pool.put( this );
+	// **** per verificare se la spedizione del valore di ritorno e' andata bene
+	// **** inserire qui altro codice
+	break;
+      default:
+        Debug.print( "CallThread error" );
+	break;
+    } // end switch
+
+    return;
+  }
+
+  /**
+   * Esegue la up-call al servizio.
+   */
+  private Container execCall( ) throws RemoteException, RegistryException
+  {
+    RemoteServicesReference r_ref = callgram.getServicesReference();
+    Debug.assert( r_ref != null );
+
+    // Interrogazione del Registry
+    // Comprende anche i servizi del Registry: register, lookup
+    LocalServicesReference l_ref = rio.registry.Local.lookup( r_ref );
+
+    Skeleton service_skeleton = l_ref.getSkeleton();
+    Debug.assert( service_skeleton != null);
+
+    String service_name = "invoke_" + r_ref.getServiceName() + "_" + r_ref.getServiceNumericSignature();
+    // skeleton_class e' un sotto-tipo della classe Skeleton
+    Class skeleton_class = service_skeleton.getClass();
+    Method service_invoke = skeleton_class.getMethod( method_name, new Object[] { Container.class } );
+
+    // **** Tutto il sistema serve per eseguire questa singola riga di codice! ****
+
+    // effettua la chiamata
+
+    Container res = (Container) service_invoke.invoke( service_skeleton, new Object[] { callgram.getContainer() } );
+
+    return res;
+  }
+
+
+  public void run()
+  {
+    while (true)
+    {
+      // finche' non si riceve un callgram
+      while (callgram==null)
+	try { wait(); }
+	catch (InterruptedException ie ) { }
+
+      int operation;
+      int return_value;
+
+      // svegliato da execCall
+      Debug.assert( callgram != null );
+      // esegue la chiamata in questo thread
+      Container container_res;
+
+      try
+      {
+	container_res = execCall();
+	operation = Callgram.RETURN;
+	return_value = 0;
+      }
+      catch ( RemoteException remote_ex )
+      {
+        // questo errore si puo' sempre verificare.
+	operation = Callgram.REMOTE_EXCEPTION;
+	return_value = 1;
+	// Memorizza nel container l'exception
+	container_res = new Container( remote_ex.sizeOf() );
+        // true indica che serializzeremo anche oggetti quindi creare la reference_table
+	Container.ContainerOutputStream cos = container_res.getContainerOutputStream( true );
+	cos.writeObject( remote_ex );
+      }
+      catch ( RegistryException registry_ex )
+      {
+	// errore non previsto
+	Debug.print( registry_ex );
+      }
+
+      Debug.assert( container_res!=null );
+
+      // in caso in container e' null restituisce un errore
+//      operation = (container_res!=null) ? Callgram.RETURN : Callgram.ERROR;
+      // prepara un callgram di risposta invertendo sender e receiver
+      Callgram callgram_res = new Callgram( operation, return_value, callgram.getRemoteServicesReference(), container_res );
+      // imposta il listener del risultato
+      callgram.setListener( this );
+      // Inverte la direzione della session, la vecchia SessionReceive e' rimossa automaticamente
+      SessionSend session_send = SessionTable.reverseReceiveToSend( (SessionReceive) callgram.getSession() );
+      // consumazione dei dati effettuata.
+      callgram = null;
+      // invia il risultato
+      session_send.send( callgram_res );
+    } // end forever
+  } // end run
+
+}

@@ -1,0 +1,57 @@
+package aegis;
+
+import run.*;
+import run.serialization.Container;
+import run.serialization.SerializationException;
+
+public class X implements Transportable, java.io.Serializable {
+
+// campi della classe X
+  int a;
+  int b;
+
+  int[] ia;
+
+// costruttore di default
+  public X(int _a, int _b, int[] _ia)
+  {
+    a = _a;
+    b = _b;
+    ia = _ia;
+  }
+
+
+  /*
+   * Metodi necessari per la serializzazione
+   */
+  public X()
+  {
+    super();
+  }
+
+  // writeObject/readObject generate da CLIO
+  // chiamate durante l'esecuzione
+
+  public void writeObject( Container.ContainerOutputStream cos ) throws SerializationException
+  {
+    cos.writeInt( a );
+    cos.writeInt( b );
+    cos.writeIntArray( ia );
+    return;
+  }
+
+  public void readObject( Container.ContainerInputStream cis ) throws SerializationException
+  {
+    a = cis.readInt( );
+    b = cis.readInt( );
+    ia = cis.readIntArray();
+  }
+
+  public int sizeOf()
+  {
+    return /*a*/ SizeOf.INT+ /*b*/ SizeOf.INT + /*ia*/ SizeOf.array( ia );
+  }
+
+  public static long SUID = java.io.ObjectStreamClass.lookup( X.class ).getSerialVersionUID();
+
+}

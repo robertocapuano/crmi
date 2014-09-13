@@ -1,0 +1,82 @@
+package run.reference;
+
+import run.FastTransportable;
+import run.serialization.SizeOf;
+import run.serialization.Container;
+import run.serialization.SerializationException;
+
+/**
+ * Descrittore di un singolo servizio
+ */
+
+public final class Service implements FastTransportable
+{
+  String name;
+  String signature;
+
+  public Service( String _name, String _signature )
+  {
+    name = _name;
+    signature = _signature;
+  }
+
+  public final String getName()
+  {
+    return name;
+  }
+
+  public final String getSignature()
+  {
+    return signature;
+  }
+
+
+  /**
+   * Serializzazione: costruttore di default
+   */
+  public Service()
+  {
+  }
+
+  /**
+   * Serializzazione: writeObject()
+   */
+  public final void writeObject( Container.ContainerOutputStream cos ) throws SerializationException
+  {
+    cos.writeString( name );
+    cos.writeString( signature );
+  }
+
+  /**
+   * Serializzazione: readObject()
+   */
+  public final void readObject( Container.ContainerInputStream cis ) throws SerializationException
+  {
+    name = cis.readString();
+    signature = cis.readString();
+  }
+
+  public final int sizeOf()
+  {
+    return SizeOf.string(name) + SizeOf.string(signature);
+  }
+
+  public final static long SUID = java.io.ObjectStreamClass.lookup( Service.class ).getSerialVersionUID();
+
+  public String toString()
+  {
+    StringBuffer res = new StringBuffer();
+
+    res.append( '<' );
+    res.append( getClass().getName() );
+    res.append( ">\n" );
+    res.append( "name: " );
+    res.append( name );
+    res.append( ' ' );
+    res.append( "signature: " );
+    res.append( signature );
+    res.append( '\n' );
+
+    return res.toString();
+  }
+}

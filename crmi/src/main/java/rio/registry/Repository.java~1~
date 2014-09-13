@@ -1,0 +1,46 @@
+package rio.registry;
+
+/**
+ * Contiene l'associazione servizi, stub
+ */
+
+public class Repository
+{
+
+  public Repository() {
+  }
+
+
+
+  /**
+   * Per i servizi remoti Registra i RemoteServicesReference
+   */
+
+  public static void register( RemoteServicesReference rsf )
+  {
+  }
+
+  /**
+   * Per i servizi remoti restituisce la RemoteServicesReference associato al service_name
+   */
+
+  public static RemoteServicesReference lookup( String services_name )
+  {
+  }
+
+  /**
+   * Interrograzioni su servizi locali, Associa RSF a LSF
+   */
+  static void register( RemoteServicesReference rsf, LocalServicesReference lsf  );
+  {
+  }
+
+
+  /**
+   * Interrogazioni su servizi locali, restituisce LSF dato RSF interrogato dal Dispatcher
+   */
+  static LocalServicesReference lookup( RemoteServicesReference rsf )
+  {
+  }
+
+}

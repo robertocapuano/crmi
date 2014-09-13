@@ -1,0 +1,10 @@
+package run.reference;
+
+/**
+ * Elenco dei nomi e metodi disponibili sul servizio
+ */
+public class Method implements Cloneable
+{
+  String name;
+  String signature;
+}

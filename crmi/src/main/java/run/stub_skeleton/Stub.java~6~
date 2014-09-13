@@ -1,0 +1,42 @@
+package run.stub_skeleton;
+
+import run.Services;
+import run.reference.RemoteServiceReference;
+
+import rio.registry.RegistryServicesReference;
+
+
+/**
+ * classe generata
+ * da un registry intelligente (centralizzato) <---
+ *
+ * Relazioni tra le classi:
+ * Services (memorizzato dall'applicazione) == Aegis_Stub == Stub --> RegistryServicesReference
+ *
+ */
+
+
+public abstract class Stub implements Services
+{
+  /**
+   * Indirizzo del server remoto.
+   */
+  protected RegistryServicesReference registry_services_reference;
+
+  public Stub( RegistryServicesReference ini_reference )
+  {
+    registry_services_reference = ini_reference;
+  }
+
+  public static String getClassname( String services_classname )
+  {
+    return services_classname + "_Stub";
+  }
+
+  public String getClassname(  )
+  {
+    return getClass().getName();
+  }
+
+}
+

@@ -1,0 +1,48 @@
+package run.application;
+
+import run.*;
+import run.serialization.Container;
+import run.serialization.SerializationException;
+
+public class X implements Transportable {
+
+// campi della classe X
+  int a;
+  int b;
+
+  int[] ia;
+
+// costruttore di default
+  public X() {
+  }
+
+
+  // writeObject/readObject generate da CLIO
+  // chiamate durante l'esecuzione
+
+  public final void writeObject( Container.ContainerOutputStream cos ) throws SerializationException
+  {
+/*
+    cos.writeInt( a );
+    cos.writeInt( b );
+    cos.writeIntArray( ia );
+*/
+    return;
+  }
+
+
+  public final void readObject( Container.ContainerInputStream cis ) throws SerializationException
+  {
+    a = cis.readInt( );
+    b = cis.readInt( );
+    ia = cis.readIntArray();
+  }
+
+  public final int sizeOf()
+  {
+    return SizeOf.INT+SizeOf.INT+SizeOf.array( ia );
+  }
+
+
+
+}

@@ -1,0 +1,155 @@
+;; This buffer is for notes you don't want to save, and for Lisp evaluation.
+;; If you want to create a file, first visit that file with C-x C-f,
+;; then enter the text in that file's own buffer.
+
+
+
+    /**
+     * Prossima posizione su cui operare
+     */
+    int next_pos = 0;
+    /**
+     * stream in scrittura
+     */
+    boolean in_write;
+    /**
+     * Prossimo handle libero: e' un progressivo
+     */
+    int next_handle = 1;
+
+      /**
+       * Associa oggetto (riferimento in memoria) --> riferimento sullo stream
+       */
+      Hashtable object_table;
+
+      /**
+       * Associa riferimento sullo stream --> oggetto
+       */
+      Hashtable reference_table;
+
+      public ContainerOutputStream( boolean _in_write, boolean have_objects )
+      {
+	in_write = _in_write;
+
+	if (have_objects)
+	{
+	    reference_table = new Hashtable();
+	    object_table = new Hashtable();
+	}
+
+      }
+
+      void writeInt( int x )
+      {
+	next_pos += Sizeof.INT;
+      }
+
+    void writeInt( int x )
+    {
+      frame.get next_pos ] = (byte) (x>>24) & 0xff;
+      frame.get next_pos+1 ] =  (byte) (x>>16) & 0xff;
+      frame.get next_pos+2 ] = (byte) (x>>8) & 0xff;
+      frame.get next_pos+3 ] = (byte) x & 0xff;
+
+
+      next_pos += Sizeof.INT;
+
+    }
+
+      void writeOpcode( int op )
+      {
+	writeInt( op );
+      }
+
+      int readOpcode( )
+      {
+	return readInt();
+      }
+
+      void nextRef( )
+      {
+	return next_ref++;
+      }
+
+      void readRef()
+      {
+	return readInt();
+      }
+
+      void writeRef( int ref )
+      {
+	writeInt( ref );
+      }
+
+      /**
+       * Serializza l'oggetto o
+       */
+
+      public void writeObject( Transportable o )
+      {
+	Integer ref = (Integer) object_table.get(o);
+	if (ref==null)
+	{
+	  writeOpcode( Opcodes.INSTANCE );
+	  object_table.put( o, nextRef() );
+	  append( o );
+	}
+	else
+	{
+	  writeOpcode( Opcodes.REFERENCE );
+	  writeRef( ref.intValue() );
+	}
+
+      }
+
+
+      /**
+       * Legge un oggetto dal frame e lo deseriarilizza
+       */
+      Transportable readObject( Transportable o )
+      {
+	Transportable INSTANCE;
+
+	// inizializza i campi di o
+
+	int op = readOpcode();
+
+	switch (op)
+	{
+	  case REFERENCE:
+	    int ref = readReference();
+	    // cerca il ref nell'hashtable
+	    INSTANCE = (Transportable) reference_table.get( new Integer(ref) );
+	    return INSTANCE;
+	    break;
+	  case INSTANCE:
+  /**
+  * Se chiama il metodo read.Object necessariamente l'oggetto deve essere presente sullo stream.
+  *
+  */
+	    o.readObject( this );
+
+  /**
+  * Marshall -> readObject -> readInt, readFloat, oggetto ? Frame.readObject
+  *
+  *
+  *
+  */
+	    reference_table.put( new Integer( nextRef() ), o );
+	    return o;
+	    break;
+	}
+
+      } // end readObject
+
+
+      /**
+       * effettua l'append di uno stream da un altro
+       *
+       */
+      void append( Transportable t )
+      {
+	t.writeObject( this );
+      }
+
+

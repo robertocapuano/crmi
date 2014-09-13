@@ -1,0 +1,80 @@
+package aegis;
+
+import run.serialization.Container;
+import run.reference.RemoteServicesReference;
+import run.Services;
+
+import run.stub_skeleton.Stub;
+
+public class rs_Stub extends Stub implements Services
+{
+  public rs_Stub( RemoteServicesReference ref )
+  {
+    super( ref );
+  }
+
+  // primo servizio
+
+  int f1( X x, int[] ia, int i ) throws RemoteException
+  {
+    int f1_framesize = x.sizeOf() + SizeOf.sizeofArray(ia) + Sizeof.INT;
+
+    Container container = new Container( f1_framesize );
+
+    // true indica che serializzeremo anche oggetti quindi creare la reference_table
+    Container.ContainerOutputStream cos = container.getContainerOutputStream( true );
+
+    cos.writeInt( i );
+    cos.writeIntArray( ia );
+    cos.writeObject( x );
+
+    Callgram callgram = new Callgram( Opcode.CALL, remote_services_reference, null, container );
+
+    Callgram rcv_callgram = Manager.execCall( callgram );
+
+    Container res = rcv_callgram.getContainer();
+
+    // argomento false: il risultato e' un primitivo
+    Container.ContainerInputStream cis = res.getContainerInputStream( false );
+
+    int _f1 = cis.readInt();
+    return _f1;
+  }
+
+/**
+ *  secondo servizio
+ */
+
+  int[] f2( X x, X[] xa, int i ) throws RemoteException;
+  {
+    int f2_framesize = x.sizeof() + Sizeof.sizeofObjectArray( xa ) + Sizeof.INT;
+
+    Container c = new Container( f1_framesize );
+
+    // true indica che serializzeremo anche oggetti quindi creare la reference_table
+    Container.ContainerOutputStream cos = c.getContainerOutputStream( true );
+
+/**
+ *  Sullo stream i campi sono ordinati per tipo e per ordine alfabetico.
+ * quindi prima i bytes, chars, float, ..
+ * poi gli array...di primitivi
+ * le matrici (?)
+ * gli oggetti
+ * gli array di oggetti
+ * le matrici di oggetti (?)
+ */
+    cos.writeInt( i );
+    cos.writeObject( x );
+    cos.writeObjectArray( xa );
+
+    Container res = reference.call( c );
+// argomento false: il risultato e' un primitivo
+    Container.ContainerInputStream cis = res.getContainerInputStream( false );
+
+    int _f1 = cis.readInt();
+    return _f1;
+  }
+
+
+
+}

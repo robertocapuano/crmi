@@ -1,0 +1,47 @@
+package run.serialization;
+
+//import java.io.ObjectStreamClass;
+import java.util.*;
+
+import com.borland.primetime.util.Debug;
+
+/**
+ * Gestisce le descrizioni dei tipi delle classi
+ * Implementata con una hashtable che mappa SUID con classi
+ * E' una idea semplice: gestire la versionizzazione della classe con il SUID: stream unique identifier.
+ * Ottimizzazione implementata: i dati delle classi sono validi per tuta la connessione, non solo per la singola chiamata.
+ * Quindi metodi e dati sono statici.
+ * Usata durante la deserializzazione.
+ */
+
+public class SUIDTable
+{
+  private static Map suid_table = new HashMap();
+
+  /**
+   * Svuota il db delle classi.
+   */
+  static void reset( )
+  {
+    class_table.clear();
+  }
+
+  static synchronized void put( long foreign_suid, Class local_class )
+  {
+    // Verifica che il suid del mittente e' uguale al suid del ricevente
+    Debug.assert( foreign_suid == local_class.getField("SUID").getLong(null), "Class: "+class_name+"SUID: "+internal_suid+"External SUID: "+foreign_suid );
+
+    suid_table.put( new Long(foreign_suid), local_class );
+  }
+
+  static synchronized Class get( long suid )
+  {
+    return (Class) suid_table.get( new Long( suid ) );
+  }
+
+  static boolean hasClass( long suid )
+  {
+    return suid_table.containsKey( new Long(suid) );
+  }
+
+}

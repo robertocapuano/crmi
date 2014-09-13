@@ -1,0 +1,212 @@
+package run.transport;
+
+import java.net.InetAddress;
+
+import com.borland.primetime.util.Debug;
+
+import run.serialization.Container;
+
+/**
+ * IPv4 Address
+ * 4 bytes per l'indirizzo
+ * 2 bytes per la porta.
+ */
+
+public class IPAddress extends NetAddress
+{
+  /**
+   * Uso di InetAddress
+   */
+  private InetAddress inet_address;
+
+  /**
+   * Numero di porta
+   */
+  private int port;
+
+  /**
+   * Netmask, facoltativa
+   */
+  byte[] net_mask;
+
+  public IPAddress( InetAddress i_addr, int _port )
+  {
+    inet_address = i_addr;
+    port = _port;
+  }
+
+  public IPAddress( InetAddress i_addr, int _port, byte[] _net_mask )
+  {
+    inet_address = i_addr;
+    port = _port;
+    net_mask = _net_mask;
+  }
+
+  public InetAddress toInetAddress()
+  {
+    return inet_address;
+  }
+
+  public final byte[] getByteAddress()
+  {
+    return inet_address.getAddress();
+  }
+
+  public final byte[] getBytePort()
+  {
+    byte[] p = new byte[2];
+
+    p[0] = (byte) ((port >>> 8) & 0xFF);
+    p[1] = (byte) (port & 0xFF);
+
+    return p;
+  }
+
+  public final int getPort()
+  {
+    return port;
+  }
+
+  public final int sizeOf()
+  {
+    // 4 bytes di indirizzo e 2 di porta
+    return 6;
+  }
+
+  public final byte getType()
+  {
+    return IP_ADDRESS;
+  }
+
+  public final byte[] getByteArray()
+  {
+    byte[] addr = getByteAddress();
+    byte[] p = getBytePort();
+
+    byte[] result = new byte[ sizeOf() ];
+
+    int i;
+
+    for ( i=0; i<addr.length; ++i )
+      result[i] = addr[i];
+
+    for ( int c=0 ; c<p.length; ++i, ++c )
+      result[i] = p[c];
+
+    return result;
+  }
+
+  /**
+   * L'indirizzo remote e' raggiungibile da questa rete
+   */
+  public boolean isReachable( NetAddress remote_net_address )
+  {
+    if (this==remote_net_address)
+      return true;
+    else
+    if (remote_net_address.getClass() != getClass() )
+      return false;
+    else
+    {
+      IPAddress remote_ip_address = (IPAddress) remote_net_address;
+      byte[] byte_address = getByteAddress();
+      byte[] remote_byte_address = remote_ip_address.getByteAddress();
+      byte[] mask;
+
+      // controllo netmask
+      if (net_mask==null && remote_ip_address.net_mask==null)
+      {
+	// usa le classi
+	if ((byte_address[0]&128) == 0 )
+	{
+	  // classe A
+	  return byte_address[0]==remote_byte_address[0];
+	}
+	else
+	if ((byte_address[0]&192) == 128 )
+	{
+	  // classe B
+	  return byte_address[0]==remote_byte_address[0] && byte_address[1]==remote_byte_address[1];
+	}
+	else
+	if ((byte_address[0]&192) == 192 )
+	{
+	  // classe C
+	  return byte_address[0]==remote_byte_address[0] && byte_address[1]==remote_byte_address[1] && byte_address[2]==remote_byte_address[2];
+	}
+	else
+	{
+	  Debug.print( remote_net_address.toString() + ": Classe sconosciuta" );
+	  return false;
+	}
+      } // end classi
+      else
+      if (net_mask!=null && remote_ip_address.net_mask!=null)
+      {
+	for ( int i=0; i<4; ++i )
+	{
+	  // se le net_mask sono diverse gli indirizzi sono diversi?
+	  if ( net_mask[i] != remote_ip_address.net_mask[i] )
+	    return false;
+	}
+	mask = net_mask;
+      }
+      else
+      if ( net_mask != null )
+	mask = net_mask;
+      else
+	mask = remote_ip_address.net_mask;
+
+      for ( int i=0; i<4; ++i )
+      {
+	if ( (byte_address[i]&mask[i]) != (remote_byte_address[i]&mask[i]) )
+	  return false;
+      }
+
+      return true;
+    } // end else
+
+  }
+
+  /**
+   * Serializzazione: writeObject()
+   */
+  public final void writeObject( Container.ContainerOutputStream cos ) throws SerializationException
+  {
+  /**
+   * Uso di InetAddress
+   */
+  private InetAddress inet_address;
+
+  /**
+   * Numero di porta
+   */
+  private int port;
+
+  /**
+   * Netmask, facoltativa
+   */
+  byte[] net_mask;
+
+    cos.writeByteArray
+    cos.writeInt( discriminator );
+    cos.writeInt( host_address );
+    cos.writeByte( (byte) byte_length );
+  }
+
+  /**
+   * Serializzazione: readObject()
+   */
+  public final void readObject( Container.ContainerInputStream cis ) throws SerializationException
+  {
+    discriminator = cis.readInt();
+    host_address = cis.readInt();
+    byte_length = cis.readByte();
+  }
+
+  public final int sizeOf()
+  {
+    return SizeOf.INT + SizeOf.INT + SizeOf.BYTE;
+  }
+
+}

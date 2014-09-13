@@ -1,0 +1,13 @@
+package aegis;
+
+import run.Services;
+import run.RemoteException;
+
+public interface Rs extends Services {
+
+//  void f1( X x, int[] ia, int i ) throws RemoteException;
+//  int[] f2( X x, X[] xa, int i ) throws RemoteException;
+//  X f3( int i ) throws RemoteException;
+//  Z f4( int n ) throws RemoteException;
+  void f5( int x ) throws RemoteException;
+}

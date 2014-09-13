@@ -1,0 +1,63 @@
+package aegis;
+
+import com.borland.primetime.util.Debug;
+
+import rio.registry.Registry;
+import rio.registry.RegistryException;
+
+import run.RemoteException;
+import run.Services;
+import run.Utility;
+
+import rio.registry.*;
+
+import run.transport.*;
+
+public class Aegis implements Rs
+{
+  public Aegis()
+  {
+  }
+
+  public static void main(String[] args) throws RegistryException, RemoteException
+  {
+    NetAddress registry_address = null;
+    Aegis server = new Aegis();
+    String prop_registry_address = Utility.getStringProperty( "rio.registry.address", "10.0.2.1" );
+    int prop_registry_port = Utility.getIntProperty( "rio.registry.port", 2002 );
+
+    try
+    {
+      registry_address = new IPAddress( java.net.InetAddress.getByName(prop_registry_address), prop_registry_port );
+    }
+    catch (Exception e ) { Debug.println( e.toString() ); }
+
+    Registry.register( registry_address, "aegis", server );
+
+    // serve per far modificare la classe X
+    X dummy = new X(10,20, new int[0] );
+
+    for ( ; ; )
+    {
+//      try { Thread.sleep( 2000 ); } catch (Exception e ) { Debug.println( e.toString() ); }
+//      System.out.println( Utility.getStatus() );
+//
+//      System.out.println( run.exec.Dispatcher.getStatus() );
+//      System.out.println( SessionTable.getStatus() );
+//      System.out.println( run.transport.TransportTable.getTransport(0).toString() );
+    }
+
+//    Client.main( args );
+/*
+*/
+  }
+
+
+  public void f5( int x) throws RemoteException
+  {
+    Debug.println( "f5 invoked." );
+
+    return;
+  }
+
+}

@@ -1,0 +1,103 @@
+package aegis;
+
+
+ /**
+ * classe generata
+ * Rappresenta l'endpoint della chiamata
+ * La chiamata parte dal basso per risalire
+*/
+
+import run.serialization.Container;
+
+import run.stub_skeleton.Skeleton;
+
+import aegis.Rs;
+
+import run.RemoteException;
+
+public class rs_Skeleton extends Skeleton
+{
+
+  public rs_Skeleton( Services _services )
+  {
+    super( _services );
+  }
+
+/**
+ * Il nome del metodo e' importante:
+ * "methodname"_invoke
+ */
+
+  Container invoke_f1( Container c ) throws RemoteException
+  {
+    Container.ContainerInputStream cis;
+
+    // il suid sara' calcolata al tempo della compilazione
+    // per adesso usiamo uno shortcut
+    long suid = java.io.ObjectStreamClass.lookup(X.class).getSerialVersionUID();
+
+/**
+ *  Sullo stream i campi sono ordinati per tipo e per ordine alfabetico.
+ * quindi prima i bytes, chars, float, ..
+ * poi gli array...di primitivi
+ * le matrici (?)
+ * gli oggetti
+ * gli array di oggetti
+ * le matrici di oggetti (?)
+ */
+
+    int i = cis.readInt();
+    int[] ia = cis.readIntArray();
+    X x = (X) cis.readObject( X.class, suid );
+
+    /**
+     * up-call
+     * int f1( X x, int[] ia, int i ) throws RemoteException;
+     */
+    Rs server_ref = (Rs) services;
+    int invoke_res = server_ref.f1( x, ia, i ) ;
+
+    Container res = new Container( SizeOf.INT );
+    Container.ContainerOutputStream cos = res.getContainerOutputStream();
+    cos.writeInt( invoke_res );
+
+    return res;
+  }
+
+  Container invoke_f2( Container c ) throws RemoteException
+  {
+    Container.ContainerInputStream cis;
+
+    // il suid sara' calcolata al tempo della compilazione
+    //
+    long suid = java.io.ObjectStreamClass.lookup(X.class).getSerialVersionUID();
+
+/**
+ *  Sullo stream i campi sono ordinati per tipo e per ordine alfabetico.
+ * quindi prima i bytes, chars, float, ..
+ * poi gli array...di primitivi
+ * le matrici ?
+ * gli oggetti
+ * gli array di oggetti
+ * le matrici di oggetti?
+ */
+
+    int i = cis.readInt();
+    X x = (X) cis.readObject( X.class, suid );
+    X xa = (X[]) cis.readArrayObject( X.class, suid );
+
+    /**
+     * up-call
+     *   int[] f2( X x, X[] xa, int i ) throws RemoteException;
+     */
+    Rs server_ref = (Rs) services;
+    int[] invoke_res = server_ref.f2( x, xa, i );
+
+    Container res = new Container( SizeOf.array(invoke_res) );
+    Container.ContainerOutputStream cos = res.getContainerOutputStream(false);
+    cos.writeIntArray( invoke_res );
+
+    return res;
+  }
+
+}

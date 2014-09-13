@@ -1,0 +1,58 @@
+package aegis;
+
+import com.borland.primetime.util.Debug;
+
+import rio.registry.Registry;
+import rio.registry.RegistryException;
+
+import run.RemoteException;
+import run.Services;
+import run.Utility;
+
+import rio.registry.*;
+
+public class Aegis implements Rs
+{
+  public Aegis() {
+  }
+
+  public static void main(String[] args) throws RegistryException, RemoteException
+  {
+    Aegis server = new Aegis();
+//    Registry.register( "127.0.0.1", "aegis", server );
+    Registry.register( "aegis", server );
+
+    for ( ; ; )
+    {
+      try { Thread.sleep( 2000 ); } catch (Exception e ) { Debug.println( e.toString() ); }
+      System.out.println( Utility.getStatus() );
+
+//      System.out.println( run.exec.Dispatcher.getStatus() );
+//      System.out.println( SessionTable.getStatus() );
+//      System.out.println( run.transport.TransportTable.getTransport(0).toString() );
+    }
+/*
+*/
+
+//    Client.main( args );
+  }
+
+
+  public int f1( X x, int[] ia, int i ) throws RemoteException
+  {
+    Debug.println( "f1 invoked, i:" + i );
+
+    System.out.println( Utility.getStatus() );
+
+    try { Thread.sleep(i); }
+    catch (InterruptedException ie ) { Debug.println( ie.toString() ); }
+    return i+1;
+  }
+
+  public int[] f2( X x, X[] xa, int i ) throws RemoteException
+  {
+    System.out.println( "f2" );
+
+    return new int[] { 47, 48 };
+  }
+}

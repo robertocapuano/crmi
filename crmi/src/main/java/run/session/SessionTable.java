@@ -1,0 +1,434 @@
+package run.session;
+
+import java.util.*;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import run.transport.*;
+import run.exec.Dispatcher;
+
+import run.serialization.*;
+
+import run.reference.*;
+
+/**
+ * Associa una numero di sessione ad una sessione
+ * La session table e' condivisa da tutti i Transport
+ *
+ * Lo stesso session_id identifica l'invio degli argomenti e della risposta.
+ * Dopo l'invio degli argomenti, gli oggetti SessionReceive, SessionSend vengono distrutti e creati due nuovi con diversi id
+ * La vecchia session_id serve ad identificare il livello superiore.
+ * Tutto all'interno dello stesso collegamento. Il cambio di direzione e' segnalato dal messeggio RET/ACKR
+ */
+
+public class SessionTable
+{
+         private final static Logger log = LogManager.getLogger(SessionTable.class );
+ 
+  /**
+   * HashMap delle sessioni aperte
+   */
+  static protected Map session_table;
+
+  /**
+   * Pool delle SessionSend
+   */
+  static protected SessionSendPool send_pool;
+
+  /**
+   * Pool delle SessionReceive
+   */
+  static protected SessionReceivePool receive_pool;
+
+  static
+  {
+    session_table = new HashMap();
+    send_pool = new SessionSendPool( "SessionSendPool" );
+    receive_pool = new SessionReceivePool( "SessionReceivePool" );
+  }
+
+  /**
+   * Generatore di numeri pseudo-casuali
+   */
+  static Random random = new Random( );
+
+  /** Cache
+  // per il Debug ( 0 )
+  // () usa System.currentTimeMillis()
+
+  /**
+   * Crea un nuovo identificativo di sessione
+   */
+  private synchronized static int newSessionId()
+  {
+    return random.nextInt();
+  }
+
+  // gestione della hashmap
+  private synchronized static Session get( int id )
+  {
+    return (Session) session_table.get( new Integer( id ) );
+  }
+
+  private synchronized static void add( int id, Session new_session )
+  {
+    session_table.put( new Integer( id ), new_session );
+  }
+
+  private synchronized static void remove( int id )
+  {
+    session_table.remove( new Integer( id ) );
+  }
+
+  // gestione delle Session Pool
+
+  /**
+   * Rimuove la sessione dalla session_table e la restituisce al pool
+   */
+  public static void free( SessionSend session_send )
+  {
+    SessionReceive ref_session_rcv = (SessionReceive) get( session_send.getRefSessionId() );
+
+    remove( session_send.getSessionId() );
+    remove( session_send.getRefSessionId() );
+    send_pool.put( session_send );
+    receive_pool.put( ref_session_rcv );
+  }
+
+  /**
+   * Rimuove la sessione dalla session_table e la restituisce al pool
+   */
+  public static void free( SessionReceive session_rcv )
+  {
+    SessionSend ref_session_send = (SessionSend) get(session_rcv.getRefSessionId());
+
+    remove( session_rcv.getSessionId() );
+    remove( session_rcv.getRefSessionId() );
+    receive_pool.put( session_rcv );
+    send_pool.put( ref_session_send );
+  }
+
+  /**
+   * Rimuova la sessione dalla session_table e la restituisce al pool
+   */
+  public synchronized static void free( Session session )
+  {
+    if (session instanceof SessionReceive )
+      free( (SessionReceive) session );
+    else
+    if (session instanceof SessionSend )
+      free( (SessionSend) session );
+    else
+      log.info( "Tipo sessione non riconosciuta" );
+  }
+
+  /**
+   * Crea una nuova sessione all'arrivo di un datagram di init
+   */
+  protected static SessionReceive newSessionReceive( Packet init_packet )
+  {
+    int receive_session_id = init_packet.getSessionId();
+    SessionReceive receive_session = (SessionReceive) receive_pool.get();
+
+    receive_session.initSession( init_packet.getSessionId(), 0, init_packet.getTransport(), init_packet.getRemoteAddress(), Dispatcher.getDispatcher() );
+    add( receive_session_id, receive_session );
+//  return receive_session.receive( packet );
+    return receive_session;
+  }
+
+  /**
+   * Cambio di direzione, sostituzione dell'oggetto SessionSend con SessionReceive
+   */
+  public static SessionReceive reverseSendToReceive( Packet ret_packet )
+  {
+    int new_session_id = ret_packet.getSessionId();
+    int ref_session_id = ret_packet.getRefSessionId();
+
+    log.info( "new_session_id: " + new_session_id );
+    log.info( "ref_session_id: " + ref_session_id );
+
+    // Sessione esistente di tipo SessionSend
+    assert( get( ref_session_id) instanceof SessionSend );
+
+    SessionSend session_send = (SessionSend) get( ref_session_id );
+    SessionReceive session_receive = (SessionReceive) receive_pool.get();
+    session_receive.initSession( new_session_id, ref_session_id, session_send.getTransport(), session_send.getRemoteAddress(), session_send.getListener() );
+
+//    free( session_send );
+    add( new_session_id, session_receive );
+
+    return session_receive;
+  }
+
+  /**
+   * Crea una nuova sessione e vi invia un Callgram sul trasporto.
+   */
+  public static SessionSend newSessionSend( NetAddress remote_address ) throws TransportException
+  {
+    Transport transport = TransportTable.getTransport( remote_address );
+    int send_session_id = newSessionId();
+    SessionSend send_session = (SessionSend) send_pool.get();
+
+    send_session.initSession( send_session_id, 0, transport, remote_address, null );
+    add( send_session_id, send_session );
+
+    return send_session;
+  }
+
+  /**
+   * Cambio di direzione, sostituzione dell'oggetto SessionReceive con SessionSend
+   */
+  public static SessionSend reverseReceiveToSend( SessionReceive session_receive )
+  {
+    int session_id = newSessionId();
+    SessionSend session_send = (SessionSend) send_pool.get();
+
+    session_send.initSession( session_id, session_receive.getSessionId(), session_receive.getTransport(), session_receive.getRemoteAddress(), session_receive.getListener() );
+//    free( session_receive );
+
+    add( session_id, session_send );
+
+    return session_send;
+  }
+
+  /**
+   * Da SessionReceive: smista un datagramma sull'apposita sessione
+   */
+  public static Packet dispatch( Packet packet )
+  {
+//    log.info( "dispatch: " + packet.getOpcode());
+    int session_id = packet.getSessionId();
+
+    if ( packet.getOpcode() != Opcodes.INIT && packet.getOpcode() != Opcodes.RET )
+    {
+      // caso piu' frequente: pacchetto dati
+      Session session = get( session_id );
+      // se e' una sessione esistente lo smistiamo
+      if (session != null)
+      // ritorniamo il packet di risposta
+	return session.receive( packet );
+      else
+      // nel caso in cui la sessione non esiste ed il packet e' di tipo DISC
+      // risponde con un ACKD in quanto deve essere una vecchia sessione.
+      if (packet.getOpcode()==Opcodes.DISC)
+      {
+	packet.setOpcode( Opcodes.ACKD );
+	return packet;
+      }
+      else
+      {
+	// il pacchetto non e' di init e non e' associata una sessione lo scartiamo
+	return Session.nop_packet;
+      }
+    }
+    else
+    if ( packet.getOpcode() == Opcodes.INIT)
+    {
+      if ( get(session_id) != null )
+      {
+        // la sessione gia' esiste
+	// il pacchetto  e' di init e la sessione gia' e' aperta: lo scartiamo
+	log.info( "SessionTable: Arrivato pacchetto INIT ad una sessione gia' aperta.");
+	return Session.nop_packet;
+      }
+      else
+      {
+	// crea nuova sessione
+	Session rcv_session = newSessionReceive( packet );
+	return rcv_session.receive( packet );
+      }
+//      return receive( packet );
+    }
+    else
+    if ( packet.getOpcode() == Opcodes.RET )
+    {
+      Session session = get(session_id);
+      if ( session != null /*&& ( session instanceof SessionReceive) */)
+      {
+        // la sessione gia' esiste
+	// il pacchetto  e' di init e la sessione gia' e' aperta: lo scartiamo
+	log.info( "SessionTable: Arrivato pacchetto RET ad una sessione gia' aperta.");
+	return Session.nop_packet;
+      }
+      else
+      {
+	SessionReceive rcv_session = reverseSendToReceive( packet );
+
+	return rcv_session.receive( packet );
+      }
+    }
+    else
+    {
+      // mai verificato
+      log.info( "SessionTable: packet opcode sconosciuto." );
+      return null;
+    }
+  }
+
+  public static String getStatus()
+  {
+    String res = "<" + SessionTable.class.getName() + ">\n";
+    res += "session_table size: " + session_table.size() + "\n";
+    res += "send_pool: " + send_pool.toString() + "\n";
+    res += "receive_pool: " + receive_pool.toString() + "\n";
+    return res;
+  }
+
+
+/*
+/
+  // Debug
+  public static void main( String[] args ) throws Exception
+  {
+    log.info( SessionTable.class.getName() );
+
+    boolean res = selftest();
+    log.info( "Selftest " + SessionTable.class.getName() + ":<"+ res +">");
+  }
+
+  private static boolean selftest() throws Exception
+  {
+    boolean res = true;
+    res &= selftest_reverse();
+//    res &= selftest_send();
+    return res;
+  }
+
+  private static boolean selftest_send() throws Exception
+  {
+    NetAddress localhost = TransportTable.getLocalHostAddress();
+    final SessionSend session_send = new SessionSend(null,null);
+    final SessionReceive session_receive = new SessionReceive(null,null);
+
+    byte[] ba = new byte[50000];
+    for ( int i=0; i<ba.length; ++i )
+      ba[i] = (byte) (i%128);
+
+    int framesize = SizeOf.array(ba) + SizeOf.DOUBLE;
+    Container container = new Container( framesize );
+    Container.ContainerOutputStream cos = container.getContainerOutputStream(false);
+
+    cos.writeByteArray(ba);
+    cos.writeDouble(3);
+    cos.close();
+    Service remote_service = new Service( "f", "(V)V" );
+    run.reference.RemoteServiceReference remote_services_reference = new run.reference.RemoteServiceReference( localhost, "F", remote_service );
+
+    Callgram callgram = new Callgram( Callgram.CALL, remote_services_reference, null, container );
+
+    transport_receive = new Transport( (byte) 0, null, 1500-28, Transport.DEFAULT_WINDOW_SIZE ) {
+	public void run() { }
+	synchronized public void send( Packet p )
+	{
+	  Packet reply=null;
+
+	  if (p.getOpcode()!=Opcodes.NOP)
+	    reply = session_receive.receive(p);
+//	  if (random.nextInt() %2==0 && p.getOpcode()!=Opcodes.NOP )
+//	    transport_send.send( p.setData( TransportTable.getLocalHostAddress(), 0, 0, 0, new byte[1], 0,1 ) );
+//	  else
+	  {
+	    if (reply!=null && reply.getOpcode()!=Opcodes.NOP )
+	      transport_send.send( reply );
+	  }
+	}
+      };
+
+      transport_send = new Transport((byte)0, null, 1500-28, Transport.DEFAULT_WINDOW_SIZE ) {
+	public void run() { }
+	synchronized public void send( Packet p )
+	{
+	  Packet reply = null;
+	  if (p.getOpcode()!=Opcodes.NOP)
+	    reply = session_send.receive(p);
+//	  if (random.nextInt() %2==0 && p.getOpcode()!=Opcodes.NOP)
+//	    transport_send.send( p.setData( TransportTable.getLocalHostAddress(), 0, 0, 0, new byte[1], 0,1 ) );
+//	  else
+	  {
+	    if (reply!=null && reply.getOpcode()!=Opcodes.NOP )
+	      transport_receive.send( reply );
+	  }
+	}
+      };
+
+    CallgramListener selftest_send_listener = new CallgramListener() {
+      public void execCall( Callgram c )
+      {
+	SessionTable.selftest_send_check = true;
+	SessionTable.callgram_send = c;
+      }
+    };
+
+    CallgramListener selftest_receive_listener = new CallgramListener() {
+      public void execCall( Callgram c )
+      {
+	SessionTable.selftest_receive_check = true;
+	SessionTable.callgram_rcv = c;
+      }
+    };
+
+    session_send.initSession( 0, 0, transport_receive, null, selftest_send_listener );
+    session_receive.initSession(0,0, transport_send,null, selftest_receive_listener );
+
+    callgram.setListener( selftest_send_listener );
+    session_send.send( callgram );
+
+    while( selftest_send_check==false || selftest_receive_check==false)
+      Thread.sleep(10);
+
+    log.info( callgram_send.toString() );
+    log.info( callgram_rcv.toString() );
+    return callgram_send.equals(callgram_rcv);
+  }
+
+  public static boolean selftest_send_check = false;
+  public static Callgram callgram_send;
+  public static boolean selftest_receive_check = false;
+  public static Callgram callgram_rcv;
+  public static Transport transport_send, transport_receive;
+
+  private static boolean selftest_reverse() throws Exception
+  {
+    NetAddress localhost = TransportTable.getLocalHostAddress();
+
+    byte[] ba = new byte[50000];
+    for ( int i=0; i<ba.length; ++i )
+      ba[i] = (byte) (i%128);
+
+    int framesize = SizeOf.array(ba) + SizeOf.DOUBLE;
+    Container container = new Container( framesize );
+    Container.ContainerOutputStream cos = container.getContainerOutputStream(false);
+
+    cos.writeByteArray(ba);
+    cos.writeDouble(3);
+    cos.close();
+    Service remote_service = new Service( "f", "(V)V" );
+    run.reference.RemoteServiceReference remote_services_reference = new run.reference.RemoteServiceReference( localhost, "F", remote_service );
+
+    Callgram callgram = new Callgram( Callgram.CALL, remote_services_reference, null, container );
+
+    CallgramListener listener = new CallgramListener() {
+      public void execCall( Callgram c )
+      {
+      }
+    };
+
+    SessionSend session_send = newSessionSend( localhost );
+    session_send.setListener( listener );
+    session_send.setRemoteAddress( localhost );
+//    callgram.setListener( listener );
+//    session_send.send( callgram );
+
+
+    int session_id = session_send.getSessionId();
+
+    Packet ret_packet = new Packet( TransportTable.getTransport(0).getPacketSize() );
+    ret_packet.setRet( localhost, 2, session_id, 10, 1024, 0 );
+    SessionReceive session_receive = reverseSendToReceive(ret_packet);
+
+    log.info( session_send.toString() );
+    log.info( session_receive.toString() );
+    return true;
+  }
+*/
+}

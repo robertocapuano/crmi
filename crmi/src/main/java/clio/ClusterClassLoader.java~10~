@@ -1,0 +1,299 @@
+package clio;
+
+import java.util.*;
+import java.net.URL;
+import java.io.*;
+
+import de.fub.bytecode.*;
+import de.fub.bytecode.classfile.*;
+
+import com.borland.primetime.util.Debug;
+
+import run.Utility;
+
+/**
+ * ClusterClassLoader contiene i metodi per la condivisione della classi sul Cluster
+ *
+ * Delegation Model
+ * 1) System ClassLoader cerca la classe in rt.jar
+ * 2) ExtClassLoader cerca la classe "modificata" in java.ext.dirs
+ * 3) AppClassLoader cerca la classe
+ *
+ * ClassLoader
+ * loadClass implementa il delegation model, si effettua l'overiding solo se vi vuole elinare il delgation tree
+ * findClass e' il metodo da "overridare" ufficialmente, chiamato da loadClass() dopo che ha effettuato il delegation tree.
+ *
+ *
+ * 1) ClusterClassLoader estende ClassLoader, utilizza la classe Repository di BCEL.
+ *    Repository usa gli URL delle directory del CLASSPATH (java.class.path)
+ * 2) Agli URL aggiunge quello del repository delle classi dell'utente.
+ *
+ * -- AppClassLoader hiding:
+ * 3) ClusterClassLoader.loadClass() interrompe il delegation tree e carica le applicazioni dal CLASSPATH
+ *
+ * -- AppClassLoader removing:
+ * 3) * ClusterClassLoader viene creato con indicativo di parent pari al ExtClassLoader, in questo modo le classi dell'applicazione
+ *    saranno caricate con il nostro ClusterClassLoader
+ *
+ *
+ */
+
+public class ClusterClassLoader extends ClassLoader
+{
+  /**
+   * Istanza del ClusterClassLoader
+   */
+  private final static ClusterClassLoader cluster_class_loader = new ClusterClassLoader( );
+
+  /**
+   * Tipo Transportable
+   */
+  private final static JavaClass Transportable_jclass = Repository.lookupClass("run.Transportable");
+
+  /**
+   * Tipo FastTransportable
+   */
+  private final static JavaClass FastTransportable_jclass = Repository.lookupClass("run.FastTransportable");
+
+  /**
+   * Tipo Services
+   */
+  private final static JavaClass Services_jclass = Repository.lookupClass("run.Services");
+
+  /**
+   * Tipo Stub
+   */
+  private final static JavaClass Stub_jclass = Repository.lookupClass( "run.stub_skeleton.Stub" );
+
+  /**
+   * Tipo Skeleton
+   */
+  private final static JavaClass Skeleton_jclass = Repository.lookupClass( "run.stub_skeleton.Skeleton" );
+
+  /**
+   * URL del repository delle classi dell'utente
+   */
+  private static File repository_url;
+
+  /**
+   * BCEL.ClassPath relativo solo al repository dell'utente
+   */
+  private static ClassPath repository_classpath;
+
+  // Iniziliazzatore dell'URL del repository
+  static
+  {
+    String home_dir = System.getProperty( "user.home" );
+    String default_repository_dir = home_dir +  "/repository/";
+    String repository_dir = Utility.getStringProperty( "clio.repository.path", default_repository_dir );
+
+    repository_url = new File( repository_dir );
+    repository_classpath = new ClassPath( repository_url.getAbsolutePath() );
+  }
+
+  /**
+   * Tabella delle classi caricate
+   */
+  private final Map class_repository = new HashMap();
+
+  /**
+   * Ritorna l'unica istanza del ClusterClassLoader
+   */
+  public final static ClusterClassLoader getClusterClassLoader()
+  {
+    return cluster_class_loader;
+  }
+
+  /**
+   * Inizializza il ClusterClassLoader.
+   * Precarica nel repository interno le classi:
+   * 1) Transportable
+   * 2) FastTransportable
+   * 3) Services
+   * 4) Stub
+   * 5) Skeleton
+   */
+  public ClusterClassLoader( )
+  {
+    Class Transportable_class = javaClassToClass( Transportable_jclass );
+    class_repository.put( Transportable_class.getName(), Transportable_class );
+
+    Class FastTransportable_class = javaClassToClass( FastTransportable_jclass );
+    class_repository.put( FastTransportable_class.getName(), FastTransportable_class );
+
+    Class Services_class = javaClassToClass( Services_jclass );
+    class_repository.put( Services_class.getName(), Services_class );
+
+    Class Stub_class = javaClassToClass( Stub_jclass );
+    class_repository.put( Stub_class.getName(), Stub_class );
+
+    Class Skeleton_class = javaClassToClass( Skeleton_jclass );
+    class_repository.put( Skeleton_class.getName(), Skeleton_class );
+  }
+
+  /**
+   * Ordine di ricerca:
+   * 1. Cerca nel repository interno al class loader
+   * 2. Cerca nel repository dell'utente
+   * 3. Cerca nel bootclasspath/extclasspath/appclasspath
+   * 4. Verifichiamo se e' una classe generabile: stub/skeleton
+   * 5. Ci arrendiamo...
+   */
+  public Class findClass(String class_name) throws ClassNotFoundException
+  {
+    JavaClass j_cl;
+    Class cl;
+
+    // 1. Cerca nel repository interno al class loader
+    cl = (Class) class_repository.get( class_name );
+    if ( cl == null )
+    {
+      // 2. Cerca nel repository dell'utente
+      j_cl = loadFromUserRepository( class_name );
+      if ( j_cl == null )
+      {
+	// 3. Cerca nel bootclasspath/extclasspath/appclasspath
+	j_cl = Repository.lookupClass( class_name );
+	if ( j_cl == null )
+	{
+	  // non e' stata trovata: unico caso possibile deve essere generata:
+	  // 4. Verifichiamo se e' una classe generabile: stub/skeleton
+	  if ( class_name.endsWith( run.Stub.CLASSNAME_SUFFIX) || class_name.endsWith( run.Skeleton.CLASSNAME_SUFFIX) )
+	  {
+	    // findClass() termina qui: la classe, in quanto generata, e' gia' aggiornata
+	    return generateStubSkeleton( class_name );
+	  } // end stub/skeleton
+	  else
+	  {
+	    // 5. Ci arrendiamo...
+	    throw new ClassNotFoundException( class_name );
+	  } // end failed
+	} // end boot/ext/app classpath
+      } // end of user repository
+
+      // abbiamo il j_cl, va aggiornato?
+
+      if (j_cl.instanceOf( stub_jclass ) || j_cl.instanceOf(skeleton_jclass) )
+      {
+	String service_name = class_name.subString( 0, class_name.lastIndexOf( '_' ) );
+	JavaClass service_jclass = Repository.lookupClass( service_name );
+
+	int service_jclass_major = service_jclass.getMajor();
+	int jcl_major = j_cl.getMajor();
+
+	if ( service_jclass_major > j_cl_major || ( service_jclass_major==j_cl_major  && service_jclass.getMinor()>j_cl.getMino() ))
+	{
+	  String service_name = class_name.subString( 0, class_name.lastIndexOf( '_' ) );
+	  Repository.removeClass(service_name + Stub.SUFFIX_CLASSNAME );
+	  Repository.removeClass(service_name + Skeleton.SUFFIX_CLASSNAME );
+
+	  // lo stub/skeleton va aggiornato.
+	  generateStubSkeleton( class_name );
+	}
+	else
+	{
+	  // NOP: lo stub/skeleton e' aggiornato.
+	}
+      }
+      else
+      if ( j_cl.instanceOf( fasttransportable_jclass) )
+      {
+	// NOP: Se la classe implementa FastTransportable allora non va mai aggiornato
+      }
+      else
+      if ( j_cl.instanceOf(transportable_jclass) )
+      {
+	// altrimenti deve essere modificata.
+	RWSGenerator.modify( j_cl );
+      }
+
+      cl = javaClassToClass( j_cl );
+      class_repository.put( cl.getName(), cl );
+      return cl;
+    } // end class_repository
+
+  }
+
+  private Class javaClassToClass( JavaClass j_cl)
+  {
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    DataOutputStream dos = new DataOutputStream( baos );
+
+    j_cl.dump( dos );
+
+    byte[] class_dump = baos.toByteArray();
+
+    Class cl = defineClass( name, class_dump, 0, class_dump.length );
+    return cl;
+  }
+
+  private JavaClass loadFromUserRepository( String class_name )
+  {
+    try
+    {
+      ClassPath.ClassFile cpcf = repository_classpath.getClassFile(class_name);
+      InputStream is = cpcf.getInputStream();
+      ClassParser c_parser = new ClassParser( is, name );
+
+      JavaClass j_cl = c_parser.parse();
+      Repository.addClass(j_cl);
+      return j_cl;
+    }
+    catch (IOException io_exception)
+    {
+      return null;
+    }
+  }
+
+  private void storeIntoUserRepository( JavaClass j_cl ) throws IOException
+  {
+    String class_name = j_cl.getClassName();
+    class_name.replace( '.', '/' );
+    File class_url = new File( repository_url, class_name );
+    FileOutputStream fos = new FileOutputStream( repository_url );
+    DataOutputStream dos = new DataOutputStream( fos );
+
+    j_cl.dump( dos );
+    fos.close();
+  }
+
+ /**
+   * Genera JavaClass, Class e le memorizza nei rispettivi Repository.
+   * Sono generate sia Stub/Skeleton per il servizio.
+   */
+  private Class generateStubSkeleton( String class_name ) throws ClassNotFoundException
+  {
+    String service_name = class_name.subString( 0, class_name.lastIndexOf( '_' ) );
+
+    // Server: la classe del servizio gia' deve essere stata caricata
+    // ****** client: la classe si trova nel classpath, non e' detto...
+    JavaClass service_jclass = Repository.lookup( service_name );
+
+    return generateStubSkeleton( class_name, service_jclass );
+  }
+
+  /**
+   * Genera JavaClass, Class e le memorizza nei rispettivi Repository.
+   * Sono generate sia Stub/Skeleton per il servizio.
+   */
+  private Class generateStubSkeleton( String class_name, JavaClass service_jclass ) throws ClassNotFoundException
+  {
+    JavaClass stub_jclass = ssg.generateStubClass( service_jclass );
+    JavaClass skeleton_jclass = ssg.generateSkeletonClass( service_jclass );
+
+    storeIntoRepository( stub_jclass );
+    storeIntoRepository( skeleton_jclass );
+
+    Class stub_class = javaClassToClass( stub_jclass );
+    Class skeleton_class = javaClassToClass( skeleton_jclass );
+
+    class_repository.put( stub_class.getName(), stub_class );
+    class_repository.put( skeleton_class.getName(), skeleton_class );
+
+    if ( class_name.endsWith( run.Stub.CLASSNAME_SUFFIX) )
+      return stub_class;
+    else
+      return skeleton_class;
+  }
+
+}

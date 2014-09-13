@@ -1,0 +1,13 @@
+package rio.registry;
+
+import run.transport.*;
+
+class Packet implements Sendable
+{
+
+  public Packet()
+  {
+  }
+
+
+}

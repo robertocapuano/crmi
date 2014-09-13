@@ -1,0 +1,58 @@
+package run.serialization;
+
+/**
+ * Mappa Class -> SUID
+ * in modo da verificare se un tipo classe e' gia' stata serializzata.
+ * E' implementata con una HashMap.
+ * Usata durante la serializzazione.
+ */
+
+public class ClassTable {
+  private Map class_table;
+
+  public ClassTable()
+  {
+    class_table = new HashMap();
+  }
+
+  void reset()
+  {
+    class_table.clear();
+  }
+
+  /**
+   * Inserisce la classe nel db
+   *
+   * @return SUID della classe
+   */
+  long put( Class class_type )
+  {
+    long SUID = local_class.getField("SUID").getLong(null);
+
+    class_table.put( class_type, new Long(SUID) );
+    return SUID;
+  }
+
+  /**
+   * Verifica se un oggetto e' gia' stato serializzato
+   */
+  boolean has( Class class_type )
+  {
+    return reference_table.containsKey( reference );
+  }
+
+  /**
+   * Il valore 0 indica che e' la prima volta che si presenta l'oggetto alla reference_table
+   */
+  int get( Transportable reference )
+  {
+    Integer i_handle = (Integer) reference_table.get(reference);
+
+    if ( i_handle != null )
+      return i_handle.intValue();
+    else
+      return 0;
+  }
+
+
+}
