@@ -1,0 +1,7 @@
+/**
+    CRMI: Cluster RMI
+    
+    Copyright 2014 Roberto Capuano  <roberto.capuano@me.com>
+
+    All Rights reserved
+*/
