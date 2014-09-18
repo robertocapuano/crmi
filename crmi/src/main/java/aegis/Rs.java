@@ -1,5 +1,5 @@
 /* 
- * Copyright (c) 2014, Roberto Capuano <roberto@2think.it> Capuano <Roberto Capuano <roberto@2think.it>@2think.it>
+ * Copyright (c) 2014, Roberto Capuano <roberto@2think.it> 
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
